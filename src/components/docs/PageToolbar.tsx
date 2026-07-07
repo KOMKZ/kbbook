@@ -8,6 +8,7 @@ import Fade from '@mui/material/Fade'
 import Divider from '@mui/material/Divider'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import HomeIcon from '@mui/icons-material/Home'
+import CollectionsBookmarkIcon from '@mui/icons-material/CollectionsBookmark'
 import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop'
 import VerticalAlignBottomIcon from '@mui/icons-material/VerticalAlignBottom'
 import HistoryIcon from '@mui/icons-material/History'
@@ -26,11 +27,11 @@ function loadY(): number | null {
 function saveY(y: number) { try { localStorage.setItem(KEY_Y, String(y)) } catch {} }
 
 interface Props {
-  /** Extra buttons to inject above the divider (before scroll buttons) */
   extraButtons?: React.ReactNode
+  seriesId?: string
 }
 
-const PageToolbar = ({ extraButtons }: Props) => {
+const PageToolbar = ({ extraButtons, seriesId }: Props) => {
   const navigate = useNavigate()
   const [historyOpen, setHistoryOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
@@ -135,6 +136,12 @@ const PageToolbar = ({ extraButtons }: Props) => {
             <Tooltip title="回到首页" placement="left">
               <IconButton size="small" onClick={() => navigate('/')}><HomeIcon fontSize="small" /></IconButton>
             </Tooltip>
+
+            {seriesId && (
+              <Tooltip title="回到系列目录" placement="left">
+                <IconButton size="small" onClick={() => navigate(`/docs/${seriesId}`)}><CollectionsBookmarkIcon fontSize="small" /></IconButton>
+              </Tooltip>
+            )}
 
             {/* Collapse */}
             <Tooltip title="折叠" placement="left">

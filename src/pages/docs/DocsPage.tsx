@@ -43,6 +43,9 @@ import Breadcrumbs from '../../components/docs/Breadcrumbs'
 import PrevNextNavigator from '../../components/docs/PrevNextNavigator'
 import SpeechBar from '../../components/docs/SpeechBar'
 import { useSpeech } from '../../hooks/useSpeech'
+import { useReadingHistory } from '../../hooks/useReadingHistory'
+
+const h1FromContent = (md: string) => md.split('\n').find((l: string) => l.startsWith('# '))?.replace(/^#+\s*/, '') || ''
 
 interface ReadingPosition {
   top: number
@@ -111,6 +114,7 @@ const DocsPage = () => {
   // 统一 slug 解析(避免每个组件独立拼接,见 utils/docs.ts:resolveSlugFromParams)
   const slug = resolveSlugFromParams(params)
   const navigate = useNavigate()
+  const { addEntry } = useReadingHistory()
   const { i18n } = useTranslation()
   useTheme() // 保持主题响应
 
@@ -306,6 +310,8 @@ const DocsPage = () => {
         const docContent = await loadDocContent(targetVersion, slug, lang)
         setContent(docContent)
         setContentSlug(slug)
+        // Record reading history
+        addEntry(slug, h1FromContent(docContent) || slug, seriesId || '')
       } catch (loadErr) {
         // 文档不存在(包括 Vite SPA fallback 返回 index.html 的"假 200")→ 回到系列详情页
         console.warn(`Doc "${slug}" not found, redirecting to series detail`, loadErr)
@@ -346,6 +352,7 @@ const DocsPage = () => {
 
       {/* 统一工具栏 */}
       <PageToolbar
+        seriesId={seriesId}
         extraButtons={
           <>
             {/* Reading progress — DOM-updated for zero React re-render on scroll */}
@@ -694,7 +701,6 @@ const LoadingSkeleton = () => (
 const ErrorState = ({ message }: { message: string }) => {
   const { t } = useTranslation()
   const navigate = useNavigate()
-
   return (
     <Box
       sx={{

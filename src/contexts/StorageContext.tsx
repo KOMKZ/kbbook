@@ -21,7 +21,38 @@ import {
   AuditLogRepo, PreferencesRepo,
 } from '@/data/index.js'
 import type { IStorageDriver } from '@/data/driver/types.js'
+import { MetaSyncService } from '@/data/sync/metasync.js'
+import type { SeriesJsonFile, MetaJsonFile } from '@/data/sync/metasync.js'
 import { debugLog } from '@/data/debug.js'
+
+/** First-launch: if DB is empty, sync from bundled JSON files. */
+async function initFromFiles(d: IStorageDriver) {
+  const cnt = await d.query<{c:number}>('SELECT COUNT(*) as c FROM articles')
+  if (cnt[0]?.c && cnt[0].c > 0) return // already has data
+  debugLog.info('storage', '空数据库，从文件初始化...')
+  try {
+    const sync = new MetaSyncService(d)
+    const seriesResp = await fetch('/docs/series.json')
+    if (!seriesResp.ok) { debugLog.warn('sync', 'series.json not found'); return }
+    const seriesFile: SeriesJsonFile = await seriesResp.json()
+    const sr = await sync.syncSeries(seriesFile)
+    debugLog.info('storage', `series synced: ${sr.series}`)
+    for (const s of seriesFile.series) {
+      if (!s.enabled) continue
+      const lang = (s as any).language || 'zh-CN'
+      const version = (s as any).version || 'v0.1.0'
+      try {
+        const metaResp = await fetch(`/docs/${lang}/${version}/_meta.json`)
+        if (!metaResp.ok) continue
+        const metaFile: MetaJsonFile = await metaResp.json()
+        const mr = await sync.syncMeta(s.id, metaFile)
+        debugLog.info('storage', `${s.id}: ${mr.groups} groups, ${mr.articles} articles`)
+      } catch { /* skip broken */ }
+    }
+  } catch (e) {
+    debugLog.error('storage', '文件初始化失败', { error: (e as Error).message })
+  }
+}
 
 interface StorageState {
   driver: IStorageDriver | null
@@ -77,56 +108,8 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         const newVersion = await runner.run()
         debugLog.info('migration', `schema ${prevVersion} → ${newVersion}`)
 
-        // First launch: if DB is empty, load initial data from bundled .kbdata
-        const cnt = await d.query<{c:number}>('SELECT COUNT(*) as c FROM articles')
-        if (cnt[0]?.c === 0) {
-          debugLog.info('storage', '空数据库，加载初始数据...')
-          try {
-            const resp = await fetch('/kbbsqllite-init.kbdata')
-            if (resp.ok) {
-              const buf = await resp.arrayBuffer()
-              // Load the bundled DB as temp, export as JSON dump, import into main DB
-              const SQL = (await import('sql.js')).default
-              const initSql = await SQL()
-              const tempDb = new initSql.Database(new Uint8Array(buf))
-              // Export all tables from temp DB
-              const tables: Record<string, any[]> = {}
-              const tableNames = tempDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-              for (const { values } of tableNames) {
-                for (const vals of values) {
-                  const tname = vals[0] as string
-                  if (!tname) continue
-                  const data = tempDb.exec(`SELECT * FROM "${tname}"`)
-                  if (data.length) {
-                    tables[tname] = data[0].values.map((rowVals: any[]) => {
-                      const r: Record<string, any> = {}
-                      data[0].columns.forEach((c: string, i: number) => r[c] = rowVals[i])
-                      return r
-                    })
-                  }
-                }
-              }
-              tempDb.close()
-              // Import into main DB
-              for (const [tname, rows] of Object.entries(tables)) {
-                if (!rows.length) continue
-                const cols = Object.keys(rows[0])
-                const colDefs = cols.map((c: string) => `"${c}" ${typeof rows[0][c] === 'number' ? 'REAL' : 'TEXT'}`).join(',')
-                d.exec(`CREATE TABLE IF NOT EXISTS "${tname}" (${colDefs})`)
-                for (const row of rows) {
-                  const vals = cols.map((c: string) => row[c])
-                  const ph = vals.map(() => '?').join(',')
-                  d.exec(`INSERT OR IGNORE INTO "${tname}" (${cols.map((c: string) => `"${c}"`).join(',')}) VALUES (${ph})`, vals as any[])
-                }
-              }
-              // Update schema version
-              d.exec('INSERT OR REPLACE INTO schema_version (version, name, applied_at) VALUES (1, \'initial\', ?)', [Date.now()])
-              debugLog.info('storage', `初始数据加载完成`, { series: tables.series?.length, articles: tables.articles?.length })
-            }
-          } catch (e) {
-            debugLog.warn('storage', '初始数据加载失败', { error: (e as Error).message })
-          }
-        }
+        // First launch: if DB is empty, sync from bundled JSON files
+        await initFromFiles(d)
 
         if (cancelled) { await d.close(); return }
 

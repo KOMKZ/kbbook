@@ -600,7 +600,15 @@ const DocsPage = () => {
             ) : (
               <>
                 {!fullscreen && seriesId && slug && (
-                  <Box sx={{ maxWidth: 780, mx: 'auto', mb: 2 }}>
+                  <Box sx={{
+                    maxWidth: 780, mx: 'auto', mb: 2,
+                    position: 'sticky',
+                    top: fullscreen ? 0 : 'var(--header-height)',
+                    zIndex: 10,
+                    bgcolor: 'background.paper',
+                    pt: 1.5,
+                    pb: 0.5,
+                  }}>
                     <Breadcrumbs seriesId={seriesId} slug={slug} docs={docs} />
                   </Box>
                 )}

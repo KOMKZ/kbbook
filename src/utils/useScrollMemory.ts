@@ -54,31 +54,42 @@ export function useScrollMemory() {
     }
   }, [pathname])
 
-  // 离开前保存
+  // 离开前保存 — debounced + idle-priority to avoid scroll jank
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null
 
     const save = () => {
       const store = loadStore()
       store[pathname] = window.scrollY
-      saveStore(store)
+      // Use requestIdleCallback to avoid blocking the main thread with synchronous sessionStorage write
+      if (typeof requestIdleCallback !== 'undefined') {
+        requestIdleCallback(() => saveStore(store), { timeout: 1000 })
+      } else {
+        saveStore(store)
+      }
     }
 
-    // 滚动时防抖保存
+    // 滚动时防抖保存 — 500ms debounce (was 200ms)
     const onScroll = () => {
       if (timer) clearTimeout(timer)
-      timer = setTimeout(save, 200)
+      timer = setTimeout(save, 500)
     }
 
     // 页面卸载时立即保存
-    const onBeforeUnload = () => save()
+    const onBeforeUnload = () => {
+      const store = loadStore()
+      store[pathname] = window.scrollY
+      // Synchronous on unload — must complete before page closes
+      saveStore(store)
+    }
 
     window.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('beforeunload', onBeforeUnload)
 
     return () => {
       if (timer) clearTimeout(timer)
-      save() // 组件卸载时保存
+      // Save on unmount with idle priority
+      save()
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('beforeunload', onBeforeUnload)
     }

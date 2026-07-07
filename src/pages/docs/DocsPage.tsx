@@ -1,11 +1,11 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from '@mui/material/styles'
 import Box from '@mui/material/Box'
 import Skeleton from '@mui/material/Skeleton'
 import Typography from '@mui/material/Typography'
-import CircularProgress from '@mui/material/CircularProgress'
+
 import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
 import Drawer from '@mui/material/Drawer'
@@ -151,20 +151,36 @@ const DocsPage = () => {
     [fullscreen, setFontScaleFull, setFontScaleNormal],
   )
 
-  // Reading progress - throttled to avoid scroll jank
+  // Reading progress — DOM-only update to avoid React re-render on every scroll frame
   const [readProgress, setReadProgress] = useState(0)
+  const progressBarRef = useRef<HTMLElement>(null)
+  const progressTextRef = useRef<HTMLElement>(null)
+  const lastProgressRef = useRef(-1) // throttle React state updates
   useEffect(() => {
     let ticking = false
+    const bar = progressBarRef.current
+    const text = progressTextRef.current
     const update = () => {
       const y = window.scrollY
       const max = document.documentElement.scrollHeight - window.innerHeight
-      setReadProgress(max > 0 ? Math.min(100, Math.round((y / max) * 100)) : 0)
+      const pct = max > 0 ? Math.min(100, Math.round((y / max) * 100)) : 0
+      // DOM update (no React re-render) — fast path via CSS custom properties
+      if (bar) {
+        bar.style.setProperty('--progress-pct', String(pct))
+        bar.style.setProperty('--progress-color', pct > 0 ? '#5046e5' : 'transparent')
+      }
+      if (text) text.textContent = String(pct)
+      // Throttled React update — only every 10% change, for tooltip + ArticleToolPanel
+      if (Math.abs(pct - lastProgressRef.current) >= 10) {
+        lastProgressRef.current = pct
+        setReadProgress(pct)
+      }
       ticking = false
     }
     const onScroll = () => {
       if (!ticking) { ticking = true; requestAnimationFrame(update) }
     }
-    onScroll()
+    update()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
@@ -332,12 +348,20 @@ const DocsPage = () => {
       <PageToolbar
         extraButtons={
           <>
-            {/* Reading progress — 1st level */}
+            {/* Reading progress — DOM-updated for zero React re-render on scroll */}
             <Tooltip title={`阅读进度 ${readProgress}%`} placement="left">
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 0.25, position: 'relative' }}>
-                <CircularProgress variant="determinate" value={100} size={28} thickness={4} sx={{ color: 'action.hover', position: 'absolute' }} />
-                <CircularProgress variant="determinate" value={readProgress} size={28} thickness={4} sx={{ color: 'primary.main' }} />
-                <Typography variant="caption" sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55rem', fontWeight: 700, color: 'text.secondary' }}>
+                <Box ref={progressBarRef}
+                  sx={{
+                    width: 28, height: 28, borderRadius: '50%',
+                    background: 'conic-gradient(var(--progress-color, #5046e5) calc(var(--progress-pct, 0) * 1%), transparent 0)',
+                    transform: 'rotate(-90deg)',
+                    mask: 'radial-gradient(transparent 60%, black 61%)',
+                    WebkitMask: 'radial-gradient(transparent 60%, black 61%)',
+                  }}
+                />
+                <Typography ref={progressTextRef}
+                  sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55rem', fontWeight: 700, color: 'text.secondary' }}>
                   {readProgress}
                 </Typography>
               </Box>

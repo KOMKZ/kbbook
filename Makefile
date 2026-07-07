@@ -195,7 +195,7 @@ search:
 	pnpm search:build
 
 build:
-	pnpm build
+	VITE_VERSION_CODE=$$(date +%s) pnpm build
 
 lint:
 	pnpm lint

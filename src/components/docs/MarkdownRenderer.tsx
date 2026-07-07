@@ -854,4 +854,4 @@ const CodeBlock = ({ language, code, isDark }: CodeBlockProps) => {
   )
 }
 
-export default MarkdownRenderer
+export default React.memo(MarkdownRenderer)

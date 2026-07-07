@@ -80,8 +80,6 @@ check-sensitive:
 	fi; \
 	if [ $$errors -eq 0 ]; then echo "✅ Clean — safe to push"; else echo "❌ $$errors issue(s) found — fix before push"; exit 1; fi
 
-
-
 push:
 ifndef MSG
 	$(error Usage: make push MSG='commit message')
@@ -91,11 +89,9 @@ endif
 	git push origin main
 
 help:
-	@echo "KBBook shared commands"
+	@echo "KBBook commands"
 	@echo "  make build            TypeScript + Vite build"
 	@echo "  make dev              Start Vite on :3004"
-	@echo "  make check-sensitive  Scan for credentials before push"
-	@echo "  make push MSG='...'   git add, commit, push to origin"
+	@echo "  make check-sensitive  Scan credentials before push"
+	@echo "  make push MSG='...'   git add/commit/push"
 	@echo "  make lint             Run ESLint"
-	@echo "  make search           Build search index"
-	@echo "  make install          Install dependencies"

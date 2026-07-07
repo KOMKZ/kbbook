@@ -18,7 +18,7 @@ interface BreadcrumbsProps {
  * 找到 slug 所属的主题(group)和文章标题。
  * 支持平铺 slug 与嵌套 group/slug 两种形态。
  */
-function locate(docs: DocMeta[], slug: string): { groupTitle?: string; articleTitle?: string } {
+export function locate(docs: DocMeta[], slug: string): { groupTitle?: string; articleTitle?: string } {
   for (const item of docs) {
     if (item.isGroup && item.items) {
       // 直接命中组内文章

@@ -25,6 +25,7 @@ import FullscreenIcon from '@mui/icons-material/Fullscreen'
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import StopIcon from '@mui/icons-material/Stop'
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import { usePersistentState } from '../../utils/usePersistentState'
 import {
   loadVersions,
@@ -39,7 +40,8 @@ import {
   type ResolvedVersionInfo,
   type DocMeta,
 } from '../../utils/docs'
-import Breadcrumbs from '../../components/docs/Breadcrumbs'
+import Breadcrumbs, { locate } from '../../components/docs/Breadcrumbs'
+import { siteConfig } from '../../config/site'
 import PrevNextNavigator from '../../components/docs/PrevNextNavigator'
 import SpeechBar from '../../components/docs/SpeechBar'
 import { useSpeech } from '../../hooks/useSpeech'
@@ -136,6 +138,15 @@ const DocsPage = () => {
   const [fontScaleFull, setFontScaleFull] = usePersistentState<number>('fontScale.fullscreen', 1, inRange)
   const [stickyTitleHidden, setStickyTitleHidden] = usePersistentState<boolean>('stickyTitle.hidden', false)
   const [fullscreen, setFullscreen] = useState(false)
+
+  // 系列短标题(用于复制路径)
+  const [seriesShortTitle, setSeriesShortTitle] = useState('')
+  useEffect(() => {
+    if (!seriesId) return
+    getSeries(seriesId).then(s => {
+      setSeriesShortTitle(s?.shortTitle || s?.title || seriesId)
+    })
+  }, [seriesId])
 
   // TTS 朗读 — 提升到 DocsPage 层级共享
   const { state: speechState, progress: speechProgress, speak: speechSpeak, stop: speechStop } = useSpeech()
@@ -373,6 +384,21 @@ const DocsPage = () => {
                 </Typography>
               </Box>
             </Tooltip>
+            {/* Copy path */}
+            <Tooltip title="复制路径" placement="left">
+              <span>
+                <IconButton size="small" disabled={!content}
+                  onClick={() => {
+                    const { groupTitle, articleTitle } = locate(docs, slug || '')
+                    const path = [siteConfig.name, seriesShortTitle, groupTitle, articleTitle]
+                      .filter(Boolean)
+                      .join(' › ')
+                    navigator.clipboard.writeText(path).catch(() => {})
+                  }}>
+                  <ContentCopyIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
             {/* Article tools: font scale + sticky title */}
             <ArticleToolPanel
               fontScale={fontScale}
@@ -600,15 +626,7 @@ const DocsPage = () => {
             ) : (
               <>
                 {!fullscreen && seriesId && slug && (
-                  <Box sx={{
-                    maxWidth: 780, mx: 'auto', mb: 2,
-                    position: 'sticky',
-                    top: fullscreen ? 0 : 'var(--header-height)',
-                    zIndex: 10,
-                    bgcolor: 'background.paper',
-                    pt: 1.5,
-                    pb: 0.5,
-                  }}>
+                  <Box sx={{ maxWidth: 780, mx: 'auto', mb: 2 }}>
                     <Breadcrumbs seriesId={seriesId} slug={slug} docs={docs} />
                   </Box>
                 )}

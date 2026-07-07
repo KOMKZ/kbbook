@@ -10,7 +10,7 @@
  * Right content: scrolls independently
  */
 import { useState, useEffect, type ReactNode } from 'react'
-import useMediaQuery from '@mui/material/useMediaQuery'
+import { useMediaQuery } from '@mui/material'
 import Box from '@mui/material/Box'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
@@ -111,8 +111,6 @@ const NAV_ITEMS = [
 type NavId = (typeof NAV_ITEMS)[number]['id']
 
 const SIDEBAR_WIDTH = 180
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const isNarrow = useMediaQuery('(max-width:600px)')
 
 // ============================================================
 // OSS Config — defaults + localStorage persistence
@@ -148,6 +146,8 @@ function saveOssConfig(cfg: typeof OSS_DEFAULTS) {
 
 const SettingsPanel = () => {
   const [active, setActive] = useState<NavId>('general')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const isNarrow = useMediaQuery('(max-width:600px)')
   const { mode, networkUrl, syncStatus, syncing, switchMode, updateNetworkUrl, triggerSync, syncResult } = useDocMode()
   const [urlInput, setUrlInput] = useState(networkUrl)
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
@@ -441,13 +441,11 @@ const SettingsPanel = () => {
 
   return (
     <Box sx={{ display: 'flex', height: '100%', overflow: 'hidden', pt: 'var(--header-height, 64px)', boxSizing: 'border-box' }}>
-      {/* ---- Left sidebar — collapsible, responsive width ---- */}
+      {/* ---- Left sidebar — collapsible, responsive ---- */}
       <Box sx={{
         width: sidebarOpen ? (isNarrow ? '100%' : SIDEBAR_WIDTH) : 0,
-        flexShrink: 0,
-        borderRight: sidebarOpen ? 1 : 0, borderColor: 'divider',
-        bgcolor: 'background.paper',
-        overflow: sidebarOpen ? 'auto' : 'hidden',
+        flexShrink: 0, borderRight: sidebarOpen ? 1 : 0, borderColor: 'divider',
+        bgcolor: 'background.paper', overflow: sidebarOpen ? 'auto' : 'hidden',
         transition: 'width 0.25s',
         position: isNarrow && sidebarOpen ? 'absolute' : 'relative',
         zIndex: 10, height: '100%',
@@ -458,29 +456,31 @@ const SettingsPanel = () => {
               设置
             </Typography>
           )}
-          <IconButton size="small" onClick={() => setSidebarOpen(!sidebarOpen)} sx={{ ml: sidebarOpen ? 0 : 0.5 }}>
+          <IconButton size="small" onClick={() => setSidebarOpen(!sidebarOpen)}>
             {sidebarOpen ? <ChevronLeftIcon fontSize="small" /> : <MenuIcon fontSize="small" />}
           </IconButton>
         </Box>
-        <List dense disablePadding>
-          {NAV_ITEMS.map((item) => (
-            <ListItemButton key={item.id} selected={active === item.id}
-              onClick={() => setActive(item.id)}
-              sx={{ mx: 0.5, borderRadius: 1, mb: 0.25,
-                '&.Mui-selected': { bgcolor: 'action.selected', '&:hover': { bgcolor: 'action.selected' } } }}>
-              <ListItemIcon sx={{ minWidth: 36, color: active === item.id ? 'primary.main' : 'text.secondary' }}>
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText primary={item.label}
-                primaryTypographyProps={{ fontSize: '0.88rem', fontWeight: active === item.id ? 600 : 400,
-                  color: active === item.id ? 'primary.main' : 'text.primary' }} />
-            </ListItemButton>
-          ))}
-        </List>
+        {sidebarOpen && (
+          <List dense disablePadding>
+            {NAV_ITEMS.map((item) => (
+              <ListItemButton key={item.id} selected={active === item.id}
+                onClick={() => { setActive(item.id); if (isNarrow) setSidebarOpen(false) }}
+                sx={{ mx: 0.5, borderRadius: 1, mb: 0.25,
+                  '&.Mui-selected': { bgcolor: 'action.selected', '&:hover': { bgcolor: 'action.selected' } } }}>
+                <ListItemIcon sx={{ minWidth: 36, color: active === item.id ? 'primary.main' : 'text.secondary' }}>
+                  {item.icon}
+                </ListItemIcon>
+                <ListItemText primary={item.label}
+                  primaryTypographyProps={{ fontSize: '0.88rem', fontWeight: active === item.id ? 600 : 400,
+                    color: active === item.id ? 'primary.main' : 'text.primary' }} />
+              </ListItemButton>
+            ))}
+          </List>
+        )}
       </Box>
 
       {/* ---- Right content — scrolls independently ---- */}
-      <Box sx={{ flex: 1, overflow: 'auto', p: 3, ml: isNarrow && sidebarOpen ? '180px' : 0 }}>
+      <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
         {renderContent()}
       </Box>
 

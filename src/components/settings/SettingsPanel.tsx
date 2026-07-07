@@ -10,6 +10,8 @@
  * Right content: scrolls independently
  */
 import { useState, useEffect, type ReactNode } from 'react'
+import { useTheme as useMuiTheme } from '@mui/material/styles'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import Box from '@mui/material/Box'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
@@ -39,6 +41,8 @@ import RemoveIcon from '@mui/icons-material/Remove'
 import SettingsIcon from '@mui/icons-material/Settings'
 import SyncIcon from '@mui/icons-material/Sync'
 import InfoIcon from '@mui/icons-material/Info'
+import MenuIcon from '@mui/icons-material/Menu'
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import { useDocMode } from '../../contexts/DocModeContext'
 import { useToolbarSizeCtx } from '../../contexts/ToolbarSizeContext'
 import { listenSyncProgress, checkWebUpdate, getWebVersion, saveOssConfig as saveOssConfigNative, type SyncProgress } from '../../plugins/lz-portal-sync'
@@ -108,6 +112,8 @@ const NAV_ITEMS = [
 type NavId = (typeof NAV_ITEMS)[number]['id']
 
 const SIDEBAR_WIDTH = 180
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const isNarrow = useMediaQuery('(max-width:600px)')
 
 // ============================================================
 // OSS Config — defaults + localStorage persistence
@@ -436,16 +442,27 @@ const SettingsPanel = () => {
 
   return (
     <Box sx={{ display: 'flex', height: '100%', overflow: 'hidden', pt: 'var(--header-height, 64px)', boxSizing: 'border-box' }}>
-      {/* ---- Left sidebar — FIXED, independent scroll ---- */}
+      {/* ---- Left sidebar — collapsible, responsive width ---- */}
       <Box sx={{
-        width: SIDEBAR_WIDTH, flexShrink: 0,
-        borderRight: 1, borderColor: 'divider',
+        width: sidebarOpen ? (isNarrow ? '100%' : SIDEBAR_WIDTH) : 0,
+        flexShrink: 0,
+        borderRight: sidebarOpen ? 1 : 0, borderColor: 'divider',
         bgcolor: 'background.paper',
-        overflow: 'auto',
+        overflow: sidebarOpen ? 'auto' : 'hidden',
+        transition: 'width 0.25s',
+        position: isNarrow && sidebarOpen ? 'absolute' : 'relative',
+        zIndex: 10, height: '100%',
       }}>
-        <Typography variant="subtitle2" sx={{ px: 2, pt: 2.5, mb: 1, color: 'text.secondary', fontWeight: 600, letterSpacing: 0.5 }}>
-          设置
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', px: 1, pt: 1 }}>
+          {sidebarOpen && (
+            <Typography variant="subtitle2" sx={{ flex: 1, pl: 1, color: 'text.secondary', fontWeight: 600, letterSpacing: 0.5 }}>
+              设置
+            </Typography>
+          )}
+          <IconButton size="small" onClick={() => setSidebarOpen(!sidebarOpen)} sx={{ ml: sidebarOpen ? 0 : 0.5 }}>
+            {sidebarOpen ? <ChevronLeftIcon fontSize="small" /> : <MenuIcon fontSize="small" />}
+          </IconButton>
+        </Box>
         <List dense disablePadding>
           {NAV_ITEMS.map((item) => (
             <ListItemButton key={item.id} selected={active === item.id}
@@ -464,7 +481,7 @@ const SettingsPanel = () => {
       </Box>
 
       {/* ---- Right content — scrolls independently ---- */}
-      <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
+      <Box sx={{ flex: 1, overflow: 'auto', p: 3, ml: isNarrow && sidebarOpen ? '180px' : 0 }}>
         {renderContent()}
       </Box>
 

@@ -78,7 +78,7 @@ const HomePage = () => {
     if (!('clientY' in (_event?.activatorEvent || {}))) return
     const y = (_event as any).activatorEvent?.clientY
     if (typeof y !== 'number') return
-    const EDGE = 120, MAX_SPEED = 30
+    const EDGE = 150, MAX_SPEED = 60
     if (y < EDGE) {
       const dist = (EDGE - y) / EDGE, speed = Math.max(2, Math.round(MAX_SPEED * dist * dist))
       if (!autoScrollRef.current) {

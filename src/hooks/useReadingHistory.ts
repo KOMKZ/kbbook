@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { getPreferencesRepo } from '@/data/bridge.js'
 
 const STORAGE_KEY = 'kbbook-reading-history'
 const MAX_ITEMS = 50
@@ -34,6 +35,10 @@ export function useReadingHistory() {
       const entry: HistoryEntry = { slug, title, seriesId, timestamp: Date.now() }
       const next = [entry, ...filtered].slice(0, MAX_ITEMS)
       saveAll(next)
+      // Dual-write to SQLite ReadingHistoryRepo
+      try {
+        getPreferencesRepo()?.set(STORAGE_KEY, next)
+      } catch {}
       return next
     })
   }, [])
@@ -42,6 +47,7 @@ export function useReadingHistory() {
     setItems((prev) => {
       const next = prev.filter((e) => e.slug !== slug)
       saveAll(next)
+      try { getPreferencesRepo()?.set(STORAGE_KEY, next) } catch {}
       return next
     })
   }, [])
@@ -49,6 +55,7 @@ export function useReadingHistory() {
   const clearAll = useCallback(() => {
     setItems([])
     saveAll([])
+    try { getPreferencesRepo()?.delete(STORAGE_KEY) } catch {}
   }, [])
 
   return { items, addEntry, removeEntry, clearAll }

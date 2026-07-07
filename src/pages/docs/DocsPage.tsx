@@ -47,6 +47,7 @@ import PrevNextNavigator from '../../components/docs/PrevNextNavigator'
 import SpeechBar from '../../components/docs/SpeechBar'
 import { useSpeech } from '../../hooks/useSpeech'
 import { useReadingHistory } from '../../hooks/useReadingHistory'
+import { getPreferencesRepo } from '@/data/bridge.js'
 
 const h1FromContent = (md: string) => md.split('\n').find((l: string) => l.startsWith('# '))?.replace(/^#+\s*/, '') || ''
 
@@ -89,6 +90,8 @@ const writeReadingPosition = (key: string) => {
       updatedAt: Date.now(),
     }
     localStorage.setItem(key, JSON.stringify(position))
+    // Dual-write to SQLite
+    try { getPreferencesRepo()?.set(key, position) } catch {}
   } catch {
     // localStorage 不可用时仅放弃本地记忆,不影响阅读。
   }

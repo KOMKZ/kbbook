@@ -1,12 +1,13 @@
 /**
  * SettingsPanel — Left-nav + right-content layout
  *
- * Categories (extensible — just add to NAV_ITEMS):
+ * Categories:
  *  - General   — Reading mode, toolbar size
- *  - Sync      — Network URL, OSS sync
- *  - About     — App update, version info
+ *  - Sync      — Network URL, OSS sync (works in any mode)
+ *  - Version   — Full version info
  *
- * Extending: add an entry to NAV_ITEMS, then add a case in renderContent().
+ * Left sidebar: fixed, independent scroll
+ * Right content: scrolls independently
  */
 import { useState, useEffect, type ReactNode } from 'react'
 import Box from '@mui/material/Box'
@@ -23,7 +24,6 @@ import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
 import Paper from '@mui/material/Paper'
-import Divider from '@mui/material/Divider'
 import CircularProgress from '@mui/material/CircularProgress'
 import LinearProgress from '@mui/material/LinearProgress'
 import CloudSyncIcon from '@mui/icons-material/CloudSync'
@@ -42,7 +42,7 @@ import { listenSyncProgress, checkWebUpdate, getWebVersion, type SyncProgress } 
 import { siteConfig } from '../../config/site'
 
 // ============================================================
-// Section — reusable card for a settings group
+// Section — reusable card
 // ============================================================
 
 function Section({ title, subtitle, icon, children }: {
@@ -84,30 +84,31 @@ function ToolbarSizeSection() {
 }
 
 // ============================================================
-// Navigation items — add new categories here
+// Nav
 // ============================================================
 
 const NAV_ITEMS = [
-  { id: 'general', label: '通用', icon: <SettingsIcon fontSize="small" /> },
-  { id: 'sync',    label: '同步', icon: <SyncIcon fontSize="small" /> },
-  { id: 'about',   label: '关于', icon: <InfoIcon fontSize="small" /> },
-]
+  { id: 'general', label: '通用',   icon: <SettingsIcon fontSize="small" /> },
+  { id: 'sync',    label: '同步',   icon: <SyncIcon fontSize="small" /> },
+  { id: 'version', label: '版本',   icon: <InfoIcon fontSize="small" /> },
+] as const
 
 type NavId = (typeof NAV_ITEMS)[number]['id']
+
+const SIDEBAR_WIDTH = 180
 
 // ============================================================
 // SettingsPanel
 // ============================================================
 
-const SIDEBAR_WIDTH = 180
-
 const SettingsPanel = () => {
   const [active, setActive] = useState<NavId>('general')
-  const { mode, networkUrl, syncStatus, syncing, switchMode, updateNetworkUrl, triggerSync, syncResult } =
-    useDocMode()
+  const { mode, networkUrl, syncStatus, syncing, switchMode, updateNetworkUrl, triggerSync, syncResult } = useDocMode()
   const [urlInput, setUrlInput] = useState(networkUrl)
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
+  const [webVersion, setWebVersion] = useState<string>('...')
+  const [appVersion, setAppVersion] = useState<string>('...')
 
   useEffect(() => {
     const unlisten = listenSyncProgress((data) => setProgress(data))
@@ -120,6 +121,11 @@ const SettingsPanel = () => {
       return () => clearTimeout(timer)
     }
   }, [syncing, progress?.stage])
+
+  useEffect(() => {
+    getWebVersion().then(v => setAppVersion(v)).catch(() => setAppVersion('unknown'))
+    fetch('/version.json').then(r => r.json()).then(d => setWebVersion(d.version || '0.1.0')).catch(() => setWebVersion('0.1.0'))
+  }, [])
 
   const isLocal = mode === 'local'
   const isSyncing = syncing || (progress != null && progress.stage !== 'done')
@@ -147,7 +153,7 @@ const SettingsPanel = () => {
     }
   }
 
-  // ---- Render content for each nav ----
+  // ---- per-nav content ----
 
   const renderContent = () => {
     switch (active) {
@@ -180,30 +186,24 @@ const SettingsPanel = () => {
           <>
             <Section
               title="服务器地址"
-              subtitle={isLocal ? '切换到在线模式后可配置' : '输入开发服务器地址'}
-              icon={<WifiIcon color={isLocal ? 'disabled' : 'primary'} />}
+              subtitle="输入开发服务器地址"
+              icon={<WifiIcon color="primary" />}
             >
               <Box sx={{ display: 'flex', gap: 1 }}>
-                <TextField
-                  size="small" fullWidth value={urlInput}
+                <TextField size="small" fullWidth value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
                   placeholder="http://localhost:3004"
-                  disabled={isLocal}
                 />
-                <Button variant="contained" onClick={handleUrlSave} size="small" disabled={isLocal}>保存</Button>
+                <Button variant="contained" onClick={handleUrlSave} size="small">保存</Button>
               </Box>
             </Section>
 
+            {/* OSS sync — always available regardless of mode */}
             <Section
               title="文档同步 (OSS)"
               subtitle="从阿里云 OSS 拉取最新文档到本地"
-              icon={<CloudSyncIcon color={isLocal ? 'primary' : 'disabled'} />}
+              icon={<CloudSyncIcon color="primary" />}
             >
-              {!isLocal && (
-                <Typography variant="body2" color="text.disabled" sx={{ mb: 1 }}>
-                  请先在「通用」切换到离线模式
-                </Typography>
-              )}
               {syncStatus.lastSyncTime && (
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                   上次: {syncStatus.lastSyncTime}
@@ -211,12 +211,14 @@ const SettingsPanel = () => {
                   {syncStatus.syncVersion && ` · ${syncStatus.syncVersion}`}
                 </Typography>
               )}
+
               {isSyncing && (
                 <Box sx={{ mb: 1.5 }}>
                   <LinearProgress variant="determinate" value={progressPercent} sx={{ mb: 0.5, height: 6, borderRadius: 3 }} />
                   <Typography variant="caption" color="text.secondary">{progress?.detail ?? '准备中...'}</Typography>
                 </Box>
               )}
+
               {!isSyncing && syncResult && (
                 <Box sx={{ mb: 1.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -231,36 +233,25 @@ const SettingsPanel = () => {
                       {syncResult.updated > 0 && `~${syncResult.updated} 更新 `}
                       {syncResult.deleted > 0 && `-${syncResult.deleted} 删除 `}
                       {syncResult.added === 0 && syncResult.updated === 0 && syncResult.deleted === 0 && '无变化'}
-                      {' · ' + syncResult.fileCount + ' 文件总计'}
-                      {syncResult.totalSize > 0 && ' · ' + (syncResult.totalSize / 1024).toFixed(0) + ' KB'}
                     </Typography>
                   )}
                 </Box>
               )}
-              <Button
-                variant="outlined"
-                startIcon={isSyncing ? <CircularProgress size={16} /> : <CloudSyncIcon />}
-                onClick={handleSync}
-                disabled={isSyncing || !isLocal}
-                fullWidth
-              >
+
+              <Button variant="outlined" startIcon={isSyncing ? <CircularProgress size={16} /> : <CloudSyncIcon />}
+                onClick={handleSync} disabled={isSyncing} fullWidth>
                 {isSyncing ? '同步中...' : '立即同步'}
               </Button>
             </Section>
           </>
         )
 
-      case 'about':
+      case 'version':
         return (
           <>
-            <Section
-              title="App 更新"
-              subtitle="检查并下载最新前端版本（重启生效）"
-              icon={<SystemUpdateIcon color="primary" />}
-            >
-              <Button
-                variant="outlined"
-                startIcon={<SystemUpdateIcon />}
+            <Section title="App 更新" subtitle="检查并下载最新前端版本（重启生效）"
+              icon={<SystemUpdateIcon color="primary" />}>
+              <Button variant="outlined" startIcon={<SystemUpdateIcon />}
                 onClick={async () => {
                   try {
                     setToast({ message: '正在检查更新...', severity: 'success' })
@@ -271,19 +262,27 @@ const SettingsPanel = () => {
                       const current = await getWebVersion()
                       setToast({ message: `已是最新版本 (${current})`, severity: 'success' })
                     }
-                  } catch {
-                    setToast({ message: '检查更新失败', severity: 'error' })
-                  }
-                }}
-                fullWidth
-              >
-                检查更新
-              </Button>
+                  } catch { setToast({ message: '检查更新失败', severity: 'error' }) }
+                }} fullWidth>检查更新</Button>
             </Section>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="caption" color="text.disabled">
-              {siteConfig.name} · v1.0
-            </Typography>
+
+            <Section title="版本信息" subtitle="当前应用与前端版本详情"
+              icon={<InfoIcon color="primary" />}>
+              <Box sx={{ '& .kv': { display: 'flex', justifyContent: 'space-between', py: 0.75, borderBottom: 1, borderColor: 'divider' } }}>
+                <Box className="kv"><Typography variant="body2" color="text.secondary">前端版本</Typography><Typography variant="body2" fontWeight={600}>{webVersion}</Typography></Box>
+                <Box className="kv"><Typography variant="body2" color="text.secondary">App 版本</Typography><Typography variant="body2" fontWeight={600}>{appVersion}</Typography></Box>
+                <Box className="kv"><Typography variant="body2" color="text.secondary">品牌</Typography><Typography variant="body2" fontWeight={600}>{siteConfig.name}</Typography></Box>
+                <Box className="kv"><Typography variant="body2" color="text.secondary">模式</Typography><Typography variant="body2" fontWeight={600}>{isLocal ? '本地离线' : '网络直连'}</Typography></Box>
+                <Box className="kv"><Typography variant="body2" color="text.secondary">网络地址</Typography><Typography variant="body2" fontWeight={600}>{networkUrl}</Typography></Box>
+                {syncStatus.lastSyncTime && (
+                  <>
+                    <Box className="kv"><Typography variant="body2" color="text.secondary">最近同步</Typography><Typography variant="body2" fontWeight={600}>{syncStatus.lastSyncTime}</Typography></Box>
+                    <Box className="kv"><Typography variant="body2" color="text.secondary">同步文件数</Typography><Typography variant="body2" fontWeight={600}>{syncStatus.fileCount}</Typography></Box>
+                    <Box className="kv"><Typography variant="body2" color="text.secondary">同步版本</Typography><Typography variant="body2" fontWeight={600}>{syncStatus.syncVersion || '-'}</Typography></Box>
+                  </>
+                )}
+              </Box>
+            </Section>
           </>
         )
 
@@ -294,70 +293,44 @@ const SettingsPanel = () => {
 
   // ---- Toast ----
   const toastBar = (
-    <Snackbar
-      open={!!toast} autoHideDuration={3000}
-      onClose={() => setToast(null)}
-      anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-    >
-      {toast ? (
-        <Alert severity={toast.severity} onClose={() => setToast(null)} variant="filled">
-          {toast.message}
-        </Alert>
-      ) : undefined}
+    <Snackbar open={!!toast} autoHideDuration={3000} onClose={() => setToast(null)}
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+      {toast ? <Alert severity={toast.severity} onClose={() => setToast(null)} variant="filled">{toast.message}</Alert> : undefined}
     </Snackbar>
   )
 
   return (
-    <Box sx={{ display: 'flex', height: 'calc(100vh - var(--header-height))' }}>
-      {/* ---- Left sidebar ---- */}
-      <Box
-        sx={{
-          width: SIDEBAR_WIDTH,
-          flexShrink: 0,
-          borderRight: 1,
-          borderColor: 'divider',
-          bgcolor: 'background.paper',
-          pt: 3,
-          pb: 2,
-          overflow: 'auto',
-        }}
-      >
-        <Typography variant="subtitle2" sx={{ px: 2, mb: 1, color: 'text.secondary', fontWeight: 600, letterSpacing: 0.5 }}>
+    <Box sx={{ display: 'flex', height: 'calc(100vh - var(--header-height, 64px))', pt: 'var(--header-height, 64px)' }}>
+      {/* ---- Left sidebar — FIXED, independent scroll ---- */}
+      <Box sx={{
+        width: SIDEBAR_WIDTH, flexShrink: 0,
+        borderRight: 1, borderColor: 'divider',
+        bgcolor: 'background.paper',
+        overflow: 'auto',
+        position: 'sticky', top: 0,
+        height: 'calc(100vh - var(--header-height, 64px))',
+      }}>
+        <Typography variant="subtitle2" sx={{ px: 2, pt: 2.5, mb: 1, color: 'text.secondary', fontWeight: 600, letterSpacing: 0.5 }}>
           设置
         </Typography>
         <List dense disablePadding>
           {NAV_ITEMS.map((item) => (
-            <ListItemButton
-              key={item.id}
-              selected={active === item.id}
+            <ListItemButton key={item.id} selected={active === item.id}
               onClick={() => setActive(item.id)}
-              sx={{
-                mx: 0.5,
-                borderRadius: 1,
-                mb: 0.25,
-                '&.Mui-selected': {
-                  bgcolor: 'action.selected',
-                  '&:hover': { bgcolor: 'action.selected' },
-                },
-              }}
-            >
+              sx={{ mx: 0.5, borderRadius: 1, mb: 0.25,
+                '&.Mui-selected': { bgcolor: 'action.selected', '&:hover': { bgcolor: 'action.selected' } } }}>
               <ListItemIcon sx={{ minWidth: 36, color: active === item.id ? 'primary.main' : 'text.secondary' }}>
                 {item.icon}
               </ListItemIcon>
-              <ListItemText
-                primary={item.label}
-                primaryTypographyProps={{
-                  fontSize: '0.88rem',
-                  fontWeight: active === item.id ? 600 : 400,
-                  color: active === item.id ? 'primary.main' : 'text.primary',
-                }}
-              />
+              <ListItemText primary={item.label}
+                primaryTypographyProps={{ fontSize: '0.88rem', fontWeight: active === item.id ? 600 : 400,
+                  color: active === item.id ? 'primary.main' : 'text.primary' }} />
             </ListItemButton>
           ))}
         </List>
       </Box>
 
-      {/* ---- Right content ---- */}
+      {/* ---- Right content — scrolls independently ---- */}
       <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
         {renderContent()}
       </Box>

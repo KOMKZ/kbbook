@@ -13,6 +13,17 @@
  *   node scripts/kbdata-cli.mjs import dump.json [--db db.kbdata]
  *   node scripts/kbdata-cli.mjs scan ./public/docs [--db db.kbdata]
  *   node scripts/kbdata-cli.mjs upload-oss [--db db.kbdata]
+ *
+ * Convenience commands (no raw SQL needed):
+ *   node scripts/kbdata-cli.mjs series list [--db db.kbdata]
+ *   node scripts/kbdata-cli.mjs series add <id> <title> [--short <name>] [--icon 🚀]
+ *   node scripts/kbdata-cli.mjs article list --series <id> [--db db.kbdata]
+ *   node scripts/kbdata-cli.mjs article add <slug> <title> --series <id> [--group <slug>] [--content "..."] [--tags go,mem] [--status draft]
+ *   node scripts/kbdata-cli.mjs article update <slug> --title "..." [--content "..."] [--status published]
+ *   node scripts/kbdata-cli.mjs article delete <slug>
+ *   node scripts/kbdata-cli.mjs link add <source> <target> [--type reference|prerequisite|extends]
+ *   node scripts/kbdata-cli.mjs link list <slug>
+ *   node scripts/kbdata-cli.mjs stats [--series <id>]
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
@@ -308,6 +319,104 @@ async function cmdUploadOss(dbPath) {
   console.log(JSON.stringify({ ok: true, key, size: body.length }))
 }
 
+// ── Convenience commands ──────────────────────────────────────────────────
+
+function parseOpts(args) {
+  const opts = {}
+  for (let i = 0; i < args.length; i++) {
+    if (args[i]?.startsWith('--')) {
+      const k = args[i].replace(/^--/, '')
+      const v = args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : 'true'
+      opts[k] = v
+      if (v !== 'true') i++
+    }
+  }
+  return opts
+}
+
+async function cmdSeries(args, dbPath) {
+  const sub = args[1]
+  if (sub === 'list') {
+    return cmdQuery(dbPath, 'SELECT id, title, short_title, enabled FROM series ORDER BY sort_order')
+  }
+  if (sub === 'add') {
+    const id = args[2], title = args[3]
+    if (!id || !title) { console.error(JSON.stringify({ error: 'usage: series add <id> <title> [--short ...] [--icon ...]' })); process.exit(1) }
+    const opts = parseOpts(args.slice(4))
+    const now = Date.now()
+    return cmdExec(dbPath, `INSERT OR REPLACE INTO series (id, title, short_title, icon, enabled, created_at, updated_at) VALUES ('${id}','${title}','${opts.short || ''}','${opts.icon || ''}',1,${now},${now})`)
+  }
+  console.error(JSON.stringify({ error: `unknown series subcommand: ${sub}` })); process.exit(1)
+}
+
+async function cmdArticle(args, dbPath) {
+  const sub = args[1]
+  const opts = parseOpts(args.slice(2))
+
+  if (sub === 'list') {
+    const sid = opts.series || ''
+    if (!sid) { console.error(JSON.stringify({ error: '--series <id> required' })); process.exit(1) }
+    return cmdQuery(dbPath, `SELECT slug, title, group_id, status, word_count, updated_at FROM articles WHERE series_id='${sid}' ORDER BY updated_at DESC`)
+  }
+  if (sub === 'add') {
+    const slug = args[2], title = args[3]
+    if (!slug || !title) { console.error(JSON.stringify({ error: 'usage: article add <slug> <title> --series <id>' })); process.exit(1) }
+    if (!opts.series) { console.error(JSON.stringify({ error: '--series <id> required' })); process.exit(1) }
+    const now = Date.now()
+    const gid = opts.group ? `${opts.series}:${opts.group}` : 'null'
+    // Ensure series exists first
+    await cmdExec(dbPath, `INSERT OR IGNORE INTO series (id, title, created_at, updated_at) VALUES ('${opts.series}','${opts.series}',${now},${now})`)
+    if (opts.group) {
+      await cmdExec(dbPath, `INSERT OR IGNORE INTO groups (id, series_id, title, slug, sort_order) VALUES ('${gid}','${opts.series}','${opts.group}','${opts.group}',0)`)
+    }
+    return cmdExec(dbPath, `INSERT OR REPLACE INTO articles (slug, series_id, group_id, title, content, tags, status, created_at, updated_at) VALUES ('${slug}','${opts.series}',${gid === 'null' ? 'NULL' : `'${gid}'`},'${title}','${opts.content || ''}','${opts.tags || ''}','${opts.status || 'published'}',${now},${now})`)
+  }
+  if (sub === 'update') {
+    const slug = args[2]
+    if (!slug) { console.error(JSON.stringify({ error: 'usage: article update <slug> --title "..."' })); process.exit(1) }
+    const sets = []
+    const now = Date.now()
+    if (opts.title) sets.push(`title='${opts.title}'`)
+    if (opts.content) sets.push(`content='${opts.content}'`)
+    if (opts.status) sets.push(`status='${opts.status}'`)
+    if (opts.tags) sets.push(`tags='${opts.tags}'`)
+    if (opts.group) sets.push(`group_id='${opts.group}'`)
+    if (!sets.length) { console.error(JSON.stringify({ error: 'no fields to update' })); process.exit(1) }
+    sets.push(`updated_at=${now}`)
+    return cmdExec(dbPath, `UPDATE articles SET ${sets.join(', ')} WHERE slug='${slug}'`)
+  }
+  if (sub === 'delete') {
+    const slug = args[2]
+    if (!slug) { console.error(JSON.stringify({ error: 'usage: article delete <slug>' })); process.exit(1) }
+    return cmdExec(dbPath, `DELETE FROM articles WHERE slug='${slug}'`)
+  }
+  console.error(JSON.stringify({ error: `unknown article subcommand: ${sub}` })); process.exit(1)
+}
+
+async function cmdLink(args, dbPath) {
+  const sub = args[1]
+  if (sub === 'add') {
+    const source = args[2], target = args[3]
+    if (!source || !target) { console.error(JSON.stringify({ error: 'usage: link add <sourceSlug> <targetSlug> [--type reference]' })); process.exit(1) }
+    const opts = parseOpts(args.slice(4))
+    return cmdExec(dbPath, `INSERT OR IGNORE INTO article_links (source_slug, target_slug, link_type) VALUES ('${source}','${target}','${opts.type || 'reference'}')`)
+  }
+  if (sub === 'list') {
+    const slug = args[2]
+    if (!slug) { console.error(JSON.stringify({ error: 'usage: link list <slug>' })); process.exit(1) }
+    return cmdQuery(dbPath, `SELECT 'outgoing' as direction, target_slug as slug, link_type FROM article_links WHERE source_slug='${slug}' UNION ALL SELECT 'incoming' as direction, source_slug as slug, link_type FROM article_links WHERE target_slug='${slug}'`)
+  }
+  console.error(JSON.stringify({ error: `unknown link subcommand: ${sub}` })); process.exit(1)
+}
+
+async function cmdStats(args, dbPath) {
+  const opts = parseOpts(args)
+  if (opts.series) {
+    return cmdQuery(dbPath, `SELECT (SELECT COUNT(*) FROM articles WHERE series_id='${opts.series}') as article_count, (SELECT COUNT(*) FROM articles WHERE series_id='${opts.series}' AND status='published') as published_count, (SELECT COUNT(*) FROM articles WHERE series_id='${opts.series}' AND status='draft') as draft_count, COALESCE((SELECT SUM(word_count) FROM articles WHERE series_id='${opts.series}'),0) as total_words`)
+  }
+  return cmdQuery(dbPath, `SELECT (SELECT COUNT(*) FROM series) as series_count, (SELECT COUNT(*) FROM articles) as article_count, (SELECT COUNT(*) FROM article_links) as link_count`)
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2)
@@ -320,7 +429,7 @@ if (dbIdx !== -1) dbPath = resolve(args[dbIdx + 1])
 if (!cmd || cmd === 'help') {
   console.log(`kbdata-cli — KBBook SQLite database tool
 
-Usage:
+Raw SQL:
   node scripts/kbdata-cli.mjs init [db.kbdata]
   node scripts/kbdata-cli.mjs exec "<SQL>" [--db db.kbdata]
   node scripts/kbdata-cli.mjs query "<SQL>" [--db db.kbdata]
@@ -329,13 +438,16 @@ Usage:
   node scripts/kbdata-cli.mjs scan <docs-dir> [--db db.kbdata]
   node scripts/kbdata-cli.mjs upload-oss [--db db.kbdata]
 
-Examples:
-  node scripts/kbdata-cli.mjs init
-  node scripts/kbdata-cli.mjs exec "INSERT INTO series (id, title, created_at, updated_at) VALUES ('go', 'Go', $(date +%s)000, $(date +%s)000)"
-  node scripts/kbdata-cli.mjs query "SELECT slug, title FROM articles WHERE series_id='go'"
-  node scripts/kbdata-cli.mjs scan public/docs
-  node scripts/kbdata-cli.mjs export dump.json
-  node scripts/kbdata-cli.mjs upload-oss`)
+Convenience (no SQL needed):
+  node scripts/kbdata-cli.mjs series list
+  node scripts/kbdata-cli.mjs series add <id> <title> [--short <name>] [--icon 🚀]
+  node scripts/kbdata-cli.mjs article list --series <id>
+  node scripts/kbdata-cli.mjs article add <slug> <title> --series <id> [--group <grp>] [--content "..."] [--tags t1,t2] [--status draft|published]
+  node scripts/kbdata-cli.mjs article update <slug> --title "..." [--content "..."] [--status published]
+  node scripts/kbdata-cli.mjs article delete <slug>
+  node scripts/kbdata-cli.mjs link add <source> <target> [--type reference|prerequisite|extends]
+  node scripts/kbdata-cli.mjs link list <slug>
+  node scripts/kbdata-cli.mjs stats [--series <id>]`)
   process.exit(0)
 }
 
@@ -349,6 +461,10 @@ Examples:
       case 'import': await cmdImport(dbPath, args[1]); break
       case 'scan': await cmdScan(dbPath, args[1] || 'public/docs'); break
       case 'upload-oss': await cmdUploadOss(dbPath); break
+      case 'series': await cmdSeries(args, dbPath); break
+      case 'article': await cmdArticle(args, dbPath); break
+      case 'link': await cmdLink(args, dbPath); break
+      case 'stats': await cmdStats(args, dbPath); break
       default: console.error(`Unknown command: ${cmd}`); process.exit(1)
     }
   } catch (err) {

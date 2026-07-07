@@ -9,7 +9,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react'
-import { createDriver, detectAvailableDrivers } from '@/data/driver/factory.js'
+import { createDriver } from '@/data/driver/factory.js'
 import { MigrationRunner } from '@/data/schema/migrations.js'
 import { allMigrations } from '@/data/schema/index.js'
 import { BackupManager } from '@/data/backup/manager.js'
@@ -21,7 +21,6 @@ import {
   AuditLogRepo, PreferencesRepo,
 } from '@/data/index.js'
 import type { IStorageDriver } from '@/data/driver/types.js'
-import type { DriverType } from '@/data/driver/factory.js'
 import { MetaSyncService } from '@/data/sync/metasync.js'
 import type { SeriesJsonFile, MetaJsonFile } from '@/data/sync/metasync.js'
 import { debugLog } from '@/data/debug.js'
@@ -60,7 +59,6 @@ interface StorageState {
   driver: IStorageDriver | null
   ready: boolean
   error: string | null
-  driverType: DriverType
 }
 
 interface Repos {
@@ -77,11 +75,7 @@ interface Repos {
 }
 
 const StorageCtx = createContext<StorageState & { repos: Repos | null }>({
-  driver: null,
-  ready: false,
-  error: null,
-  driverType: 'localstorage',
-  repos: null,
+  driver: null, ready: false, error: null, repos: null,
 })
 
 export function useStorage() {
@@ -97,49 +91,34 @@ export function useRepos(): Repos {
 
 export function StorageProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<StorageState>({
-    driver: null, ready: false, error: null, driverType: 'localstorage',
+    driver: null, ready: false, error: null,
   })
 
   useEffect(() => {
     let cancelled = false
 
     async function init() {
-      // Determine driver type
-      const stored = localStorage.getItem('kbbook-storage-driver') as DriverType | null
-      const available = detectAvailableDrivers()
-      const driverType: DriverType = stored && available.includes(stored) ? stored : 'sqljs'
-
       try {
-        // Restore debug toggle
-        if (localStorage.getItem('kbbook-debug-enabled') === '1') debugLog.setEnabled(true)
-
-        debugLog.info('storage', `选择驱动: ${driverType}`, { available: available.join(',') })
-        const d = createDriver(driverType)
+        debugLog.info('storage', '初始化 SQLite 驱动')
+        const d = createDriver('sqljs')
         await d.open()
-        debugLog.info('storage', `${driverType} 已打开`, { persistent: (d as any).persistent })
+        debugLog.info('storage', 'sqljs 已打开', { persistent: (d as any).persistent })
 
-        // Run migrations (idempotent)
         const runner = new MigrationRunner(d, allMigrations)
         const prevVersion = await runner.currentVersion()
         const newVersion = await runner.run()
-        debugLog.info('migration', `schema ${prevVersion} → ${newVersion}`, { latest: runner.latestVersion() })
+        debugLog.info('migration', `schema ${prevVersion} → ${newVersion}`)
 
-        // Sync file data (series.json + _meta.json) into SQLite
         await syncFiles(d)
 
         if (cancelled) { await d.close(); return }
 
-        debugLog.info('storage', '初始化完成', { driverType, schemaVersion: newVersion })
-        setState({ driver: d, ready: true, error: null, driverType })
+        debugLog.info('storage', '初始化完成', { schemaVersion: newVersion })
+        setState({ driver: d, ready: true, error: null })
       } catch (err) {
         debugLog.error('storage', '初始化失败', { error: err instanceof Error ? err.message : String(err) })
         if (!cancelled) {
-          setState({
-            driver: null,
-            ready: false,
-            error: err instanceof Error ? err.message : 'Storage init failed',
-            driverType: 'localstorage',
-          })
+          setState({ driver: null, ready: false, error: err instanceof Error ? err.message : 'Storage init failed' })
         }
       }
     }

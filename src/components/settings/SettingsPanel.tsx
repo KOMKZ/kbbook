@@ -29,7 +29,6 @@ import CircularProgress from '@mui/material/CircularProgress'
 import LinearProgress from '@mui/material/LinearProgress'
 import CloudSyncIcon from '@mui/icons-material/CloudSync'
 import { getPreferencesRepo } from '@/data/bridge.js'
-import { debugLog } from '@/data/debug.js'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
@@ -155,8 +154,6 @@ const SettingsPanel = () => {
   const { mode, networkUrl, syncStatus, syncing, switchMode, updateNetworkUrl, triggerSync, syncResult } = useDocMode()
   const [urlInput, setUrlInput] = useState(networkUrl)
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
-  const [debugEnabled, setDebugEnabled] = useState(() => debugLog.enabled || localStorage.getItem('kbbook-debug-enabled') === '1')
-  const [, setForceUpdate] = useState(0)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
   const [webVersion, setWebVersion] = useState<string>('...')
   const [appVersion, setAppVersion] = useState<string>('...')
@@ -268,77 +265,6 @@ const SettingsPanel = () => {
                   inputProps={{ min: 0, max: 300, step: 5 }}
                 />
                 <Typography variant="caption" color="text.secondary">秒</Typography>
-              </Box>
-            </Section>
-            <Section title="存储引擎" subtitle="LocalStorage 轻量无需加载；SQLite 支持复杂查询（切换后需刷新生效）">
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                <select
-                  defaultValue={localStorage.getItem('kbbook-storage-driver') || 'sqljs'}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    localStorage.setItem('kbbook-storage-driver', v)
-                    getPreferencesRepo()?.set('kbbook-storage-driver', v)
-                    setToast({ message: `存储引擎已切换为 ${v === 'sqljs' ? 'SQLite' : 'LocalStorage'}，刷新后生效`, severity: 'success' })
-                  }}
-                  style={{ padding: '6px 12px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem' }}
-                >
-                  <option value="sqljs">SQLite (sql.js WASM) — 默认</option>
-                  <option value="localstorage">LocalStorage</option>
-                </select>
-              </Box>
-            </Section>
-            <Section title="调试日志" subtitle="打开后记录数据层关键操作，用于验证 SQLite 是否正常工作">
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Switch
-                    checked={debugEnabled}
-                    onChange={(_, v) => {
-                      setDebugEnabled(v)
-                      debugLog.setEnabled(v)
-                      localStorage.setItem('kbbook-debug-enabled', v ? '1' : '0')
-                      getPreferencesRepo()?.set('kbbook-debug-enabled', v ? '1' : '0')
-                      if (!v) setForceUpdate((n) => n + 1)
-                    }}
-                  />
-                  <Typography variant="body2">
-                    {debugEnabled ? '已开启 — 日志记录中' : '已关闭'}
-                  </Typography>
-                  {debugEnabled && (
-                    <Button size="small" onClick={() => { debugLog.clear(); setForceUpdate((n) => n + 1) }}>
-                      清空
-                    </Button>
-                  )}
-                </Box>
-                {debugEnabled && (
-                  <>
-                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
-                      {(() => {
-                        const s = debugLog.summary()
-                        return (
-                          <Typography variant="caption" color="text.secondary">
-                            共 {s.total} 条 · 错误 {s.errors} · 警告 {s.warns} · 模块: {s.modules.join(', ')}
-                          </Typography>
-                        )
-                      })()}
-                    </Box>
-                    <Paper variant="outlined" sx={{ maxHeight: 300, overflow: 'auto', p: 1, bgcolor: 'grey.50', fontFamily: 'monospace', fontSize: '0.72rem', lineHeight: 1.6 }}>
-                      {debugLog.getRecent(50).map((e) => (
-                        <Box key={e.id} sx={{
-                          color: e.level === 'error' ? 'error.main' : e.level === 'warn' ? 'warning.main' : 'text.primary',
-                          py: 0.25,
-                        }}>
-                          <span style={{ opacity: 0.5 }}>{new Date(e.timestamp).toLocaleTimeString()}</span>
-                          {' '}[{e.module}]{' '}
-                          {e.message}
-                          {e.detail && <span style={{ opacity: 0.6, marginLeft: 4 }}>{e.detail}</span>}
-                        </Box>
-                      ))}
-                      {debugLog.getRecent(1).length === 0 && (
-                        <Typography variant="caption" color="text.disabled">暂无日志 — 刷新页面后查看初始化日志</Typography>
-                      )}
-                    </Paper>
-                  </>
-                )}
               </Box>
             </Section>
           </>
@@ -459,56 +385,43 @@ const SettingsPanel = () => {
               )}
             </Section>
 
-            {/* OSS database backup */}
+            {/* OSS data sync — pull only from portal/app */}
             <Section
-              title="数据备份 (OSS)"
-              subtitle="将阅读历史、偏好设置等数据备份到 OSS 或从 OSS 恢复"
+              title="数据同步 (OSS)"
+              subtitle="从 OSS 拉取最新文章数据（PC 端写入 → App 拉取同步）"
               icon={<CloudSyncIcon color="secondary" />}
             >
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Button variant="outlined" size="small"
+                <Button variant="contained" size="small"
                   onClick={async () => {
                     try {
                       const { getDriver, getPreferencesRepo } = await import('@/data/bridge.js')
                       const driver = getDriver()
                       const prefs = getPreferencesRepo()
-                      if (!driver || !prefs) { setToast({ message: '存储未就绪，请刷新后重试', severity: 'error' }); return }
+                      if (!driver || !prefs) { setToast({ message: '存储未就绪', severity: 'error' }); return }
                       const ossCfg = await prefs.get<Record<string, string>>('kbbook-oss-config')
                       if (!ossCfg?.bucket) { setToast({ message: '请先在上方配置 OSS 参数', severity: 'error' }); return }
-                      setToast({ message: '正在导出并上传...', severity: 'success' })
-                      const { exportDatabase } = await import('@/data/migration/exporter.js')
-                      const { uploadToOss } = await import('@/data/sync/oss.js')
-                      const dump = await exportDatabase(driver)
-                      const result = await uploadToOss(dump, {
+                      setToast({ message: '正在从 OSS 拉取...', severity: 'success' })
+                      const { pullLatest, mergeFromOss } = await import('@/data/sync/oss.js')
+                      const { exportDatabase, importDatabase } = await import('@/data/migration/exporter.js')
+                      const result = await pullLatest({
                         bucket: ossCfg.bucket, region: ossCfg.region || 'oss-cn-hangzhou',
                         accessKeyId: ossCfg.accessKeyId, accessKeySecret: ossCfg.accessKeySecret,
                         path: ossCfg.path,
-                      }, `manual-${Date.now()}.json`)
-                      if (result.success) {
-                        setToast({ message: `备份成功 (${((result.sizeBytes || 0) / 1024).toFixed(1)} KB)`, severity: 'success' })
-                      } else {
-                        setToast({ message: `备份失败: ${result.error}`, severity: 'error' })
+                      })
+                      if (!result.success || !result.dump) {
+                        setToast({ message: `拉取失败: ${result.error}`, severity: 'error' }); return
                       }
-                    } catch (e) { setToast({ message: '备份异常: ' + (e as Error).message, severity: 'error' }) }
+                      const localDump = await exportDatabase(driver)
+                      const merged = mergeFromOss(localDump, result.dump)
+                      await importDatabase(driver, merged)
+                      setToast({ message: `同步完成 (${((result.sizeBytes || 0) / 1024).toFixed(1)} KB)`, severity: 'success' })
+                    } catch (e) { setToast({ message: '同步异常: ' + (e as Error).message, severity: 'error' }) }
                   }}
-                >上传备份到 OSS</Button>
-                <Button variant="outlined" size="small" color="secondary"
-                  onClick={async () => {
-                    try {
-                      const { getDriver } = await import('@/data/bridge.js')
-                      const prefs = getPreferencesRepo()
-                      const driver = getDriver()
-                      if (!driver || !prefs) { setToast({ message: '存储未就绪', severity: 'error' }); return }
-                      const ossCfg = await prefs.get<Record<string, string>>('kbbook-oss-config')
-                      if (!ossCfg?.bucket) { setToast({ message: '请先配置 OSS 参数', severity: 'error' }); return }
-                      // Prompt for filename (simple approach: use latest automatic backup)
-                      setToast({ message: '恢复功能需指定备份文件名（请先在 OSS 控制台确认文件名）', severity: 'error' })
-                    } catch (e) { setToast({ message: '恢复异常: ' + (e as Error).message, severity: 'error' }) }
-                  }}
-                >从 OSS 恢复备份</Button>
+                >从 OSS 拉取同步</Button>
               </Box>
               <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                备份包含全部数据表（阅读历史、偏好、系列/文章元数据等）。恢复会覆盖当前数据。
+                拉取最新文章数据（系列/目录/文章）。本地阅读记录和偏好设置不会覆盖。
               </Typography>
             </Section>
           </>

@@ -26,6 +26,8 @@ export const v001: Migration = {
       description TEXT,
       icon        TEXT,
       color       TEXT,
+      version     TEXT,
+      language    TEXT,
       enabled     INTEGER DEFAULT 1,
       sort_order  INTEGER DEFAULT 0,
       created_at  INTEGER NOT NULL,

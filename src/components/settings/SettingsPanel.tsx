@@ -41,6 +41,8 @@ import { useToolbarSizeCtx } from '../../contexts/ToolbarSizeContext'
 import { listenSyncProgress, checkWebUpdate, getWebVersion, type SyncProgress } from '../../plugins/lz-portal-sync'
 import { siteConfig } from '../../config/site'
 
+declare const __BUILD_TIME__: string
+
 // ============================================================
 // Section — reusable card
 // ============================================================
@@ -269,6 +271,7 @@ const SettingsPanel = () => {
             <Section title="版本信息" subtitle="当前应用与前端版本详情"
               icon={<InfoIcon color="primary" />}>
               <Box sx={{ '& .kv': { display: 'flex', justifyContent: 'space-between', py: 0.75, borderBottom: 1, borderColor: 'divider' } }}>
+                <Box className="kv"><Typography variant="body2" color="text.secondary">构建时间</Typography><Typography variant="body2" fontWeight={600}>{typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev'}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">前端版本</Typography><Typography variant="body2" fontWeight={600}>{webVersion}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">App 版本</Typography><Typography variant="body2" fontWeight={600}>{appVersion}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">品牌</Typography><Typography variant="body2" fontWeight={600}>{siteConfig.name}</Typography></Box>
@@ -300,15 +303,13 @@ const SettingsPanel = () => {
   )
 
   return (
-    <Box sx={{ display: 'flex', height: 'calc(100vh - var(--header-height, 64px))', pt: 'var(--header-height, 64px)' }}>
+    <Box sx={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* ---- Left sidebar — FIXED, independent scroll ---- */}
       <Box sx={{
         width: SIDEBAR_WIDTH, flexShrink: 0,
         borderRight: 1, borderColor: 'divider',
         bgcolor: 'background.paper',
         overflow: 'auto',
-        position: 'sticky', top: 0,
-        height: 'calc(100vh - var(--header-height, 64px))',
       }}>
         <Typography variant="subtitle2" sx={{ px: 2, pt: 2.5, mb: 1, color: 'text.secondary', fontWeight: 600, letterSpacing: 0.5 }}>
           设置

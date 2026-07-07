@@ -77,6 +77,55 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         const newVersion = await runner.run()
         debugLog.info('migration', `schema ${prevVersion} → ${newVersion}`)
 
+        // First launch: if DB is empty, load initial data from bundled .kbdata
+        const cnt = await d.query<{c:number}>('SELECT COUNT(*) as c FROM articles')
+        if (cnt[0]?.c === 0) {
+          debugLog.info('storage', '空数据库，加载初始数据...')
+          try {
+            const resp = await fetch('/kbbsqllite-init.kbdata')
+            if (resp.ok) {
+              const buf = await resp.arrayBuffer()
+              // Load the bundled DB as temp, export as JSON dump, import into main DB
+              const SQL = (await import('sql.js')).default
+              const initSql = await SQL()
+              const tempDb = new initSql.Database(new Uint8Array(buf))
+              // Export all tables from temp DB
+              const tables: Record<string, any[]> = {}
+              const tableNames = tempDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+              for (const { values } of tableNames) {
+                for (const [name] of values) {
+                  const data = tempDb.exec(`SELECT * FROM "${name}"`)
+                  if (data.length) {
+                    tables[name] = data[0].values.map(vals => {
+                      const r: Record<string, any> = {}
+                      data[0].columns.forEach((c: string, i: number) => r[c] = vals[i])
+                      return r
+                    })
+                  }
+                }
+              }
+              tempDb.close()
+              // Import into main DB
+              for (const [tname, rows] of Object.entries(tables)) {
+                if (!rows.length) continue
+                const cols = Object.keys(rows[0])
+                const colDefs = cols.map((c: string) => `"${c}" ${typeof rows[0][c] === 'number' ? 'REAL' : 'TEXT'}`).join(',')
+                d.exec(`CREATE TABLE IF NOT EXISTS "${tname}" (${colDefs})`)
+                for (const row of rows) {
+                  const vals = cols.map((c: string) => row[c])
+                  const ph = vals.map(() => '?').join(',')
+                  d.exec(`INSERT OR IGNORE INTO "${tname}" (${cols.map((c: string) => `"${c}"`).join(',')}) VALUES (${ph})`, vals as any[])
+                }
+              }
+              // Update schema version
+              d.exec('INSERT OR REPLACE INTO schema_version (version, name, applied_at) VALUES (1, \'initial\', ?)', [Date.now()])
+              debugLog.info('storage', `初始数据加载完成`, { series: tables.series?.length, articles: tables.articles?.length })
+            }
+          } catch (e) {
+            debugLog.warn('storage', '初始数据加载失败', { error: (e as Error).message })
+          }
+        }
+
         if (cancelled) { await d.close(); return }
 
         debugLog.info('storage', '初始化完成', { schemaVersion: newVersion })

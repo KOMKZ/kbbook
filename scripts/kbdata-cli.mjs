@@ -333,6 +333,92 @@ function vId(v, name) { if (!v || !VALID_ID.test(v)) fail(`${name} must match ${
 function vStatus(v) { if (v && !VALID_STATUS.test(v)) fail(`status must be draft|published|archived`) }
 function vLinkType(v) { if (v && !VALID_LINK_TYPE.test(v)) fail(`type must be reference|prerequisite|extends|related`) }
 
+// ── Build initial DB from JSON files ──────────────────────────────────────
+
+async function cmdBuildInit(args, dbPath) {
+  const docsDir = resolve(args[1] || 'public/docs')
+  const { db } = await openDb(dbPath)
+  const now = Date.now()
+
+  // 1. Load series.json
+  const seriesPath = join(docsDir, 'series.json')
+  if (!existsSync(seriesPath)) fail(`series.json not found at ${seriesPath}`)
+  const seriesData = JSON.parse(readFileSync(seriesPath, 'utf8'))
+  const seriesList = Array.isArray(seriesData) ? seriesData : (seriesData.series || [])
+
+  let seriesCount = 0, groupCount = 0, articleCount = 0
+
+  for (const s of seriesList) {
+    if (!s.enabled) continue
+    seriesCount++
+    db.run(`INSERT OR REPLACE INTO series (id, title, short_title, tagline, description, icon, color, enabled, sort_order, created_at, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [s.id, s.title, s.shortTitle || null, s.tagline || null, s.description || null,
+       s.icon || null, s.color || null, s.enabled ? 1 : 0, seriesCount - 1, now, now])
+
+    // 2. Load _meta.json for this series
+    const lang = s.language || 'zh-CN'
+    const version = s.version || 'v0.1.0'
+    const metaPath = join(docsDir, lang, version, '_meta.json')
+    if (!existsSync(metaPath)) continue
+
+    try {
+      const meta = JSON.parse(readFileSync(metaPath, 'utf8'))
+      // Recursively process items
+      function processItems(items, parentGroupId = null) {
+        for (const item of items) {
+          const isGroup = item.isGroup === true || (item.items && item.items.length > 0)
+          if (isGroup) {
+            const gid = `${s.id}:${item.slug}`
+            db.run(`INSERT OR REPLACE INTO groups (id, series_id, parent_group_id, title, slug, sort_order)
+              VALUES (?,?,?,?,?,?)`,
+              [gid, s.id, parentGroupId, item.title, item.slug, item.order || groupCount])
+            groupCount++
+            if (item.items) processItems(item.items, gid)
+          } else {
+            db.run(`INSERT OR REPLACE INTO articles (slug, series_id, group_id, title, status, created_at, updated_at)
+              VALUES (?,?,?,?,?,?,?)`,
+              [item.slug, s.id, parentGroupId, item.title, 'published', now, now])
+            articleCount++
+          }
+        }
+      }
+      processItems(meta.items || meta)
+    } catch (e) {
+      console.error(`  ⚠️  skip ${s.id} _meta.json: ${e.message}`)
+    }
+  }
+
+  // 3. Insert default preferences
+  const defaults = {
+    'kbbook-theme-mode': 'dark',
+    'kbbook-reading-history': '[]',
+    'kbbook-oss-config': JSON.stringify({
+      endpoint: 'https://oss-cn-shenzhen.aliyuncs.com',
+      bucket: 'yogan-static',
+      path: 'kbbsqllite-data',
+      accessKeyId: '',
+      accessKeySecret: '',
+    }),
+    'kbbook-toolbar-autohide': '10',
+    'kbbook-debug-enabled': '0',
+    'lz-home-layout': 'list',
+    'kbbook-reader:fontScale.normal': '1',
+    'kbbook-reader:fontScale.fullscreen': '1',
+    'kbbook-reader:stickyTitle.hidden': 'false',
+    'kbbook-reader:sidebar.collapsed': 'false',
+  }
+  for (const [key, value] of Object.entries(defaults)) {
+    db.run('INSERT OR REPLACE INTO preferences (key, value, updated_at) VALUES (?,?,?)',
+      [key, value, now])
+  }
+
+  await saveDb(dbPath, db)
+  db.close()
+  const sizeKB = (existsSync(dbPath) ? readFileSync(dbPath).length : 0) / 1024
+  ok({ series: seriesCount, groups: groupCount, articles: articleCount, prefs: Object.keys(defaults).length, db: dbPath, sizeKB: Math.round(sizeKB) })
+}
+
 // ── Convenience commands ──────────────────────────────────────────────────
 
 function parseOpts(args) {
@@ -522,6 +608,11 @@ if (dbIdx !== -1) dbPath = resolve(args[dbIdx + 1])
 if (!cmd || cmd === 'help') {
   console.log(`kbdata-cli — KBBook SQLite database tool
 
+Setup:
+  node scripts/kbdata-cli.mjs build-init-db [docs-dir] [--db kbbsqllite.kbdata]
+      Build initial SQLite database from series.json + _meta.json files.
+      Run once to create the initial .kbdata file.
+
 Raw SQL:
   node scripts/kbdata-cli.mjs init [db.kbdata]
   node scripts/kbdata-cli.mjs exec "<SQL>" [--db db.kbdata]
@@ -548,6 +639,7 @@ Convenience (no SQL needed):
   try {
     switch (cmd) {
       case 'init': await cmdInit(args[1] || dbPath); break
+      case 'build-init-db': await cmdBuildInit(args, dbPath); break
       case 'exec': await cmdExec(dbPath, args[1]); break
       case 'query': await cmdQuery(dbPath, args[1]); break
       case 'export': await cmdExport(dbPath, args[1]); break

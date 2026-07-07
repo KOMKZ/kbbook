@@ -237,7 +237,7 @@ export async function loadDocsMeta(version: string, lang?: LanguageCode, seriesI
     return metaCache.get(cacheKey)!
   }
 
-  // Try SQLite Repo first
+  // SQLite Repo only
   if (seriesId) {
     const fromRepo = await loadDocsMetaFromRepo(seriesId, version)
     if (fromRepo && fromRepo.items.length > 0) {
@@ -246,19 +246,9 @@ export async function loadDocsMeta(version: string, lang?: LanguageCode, seriesI
     }
   }
 
-  // Fallback to _meta.json file
-  try {
-    const response = await fetch(`${_docBaseUrl}/docs/${language}/${version}/_meta.json`)
-    if (!response.ok) {
-      throw new Error(`Failed to load _meta.json for ${language}/${version}`)
-    }
-    const meta: DocsMetaConfig = await response.json()
-    metaCache.set(cacheKey, meta)
-    return meta
-  } catch (error) {
-    console.error('Error loading docs meta:', error)
-    return {
-      title: '文档',
+  // Repo empty — return minimal fallback
+  return {
+    title: '文档',
       items: [
         {
           slug: 'getting-started',
@@ -275,7 +265,6 @@ export async function loadDocsMeta(version: string, lang?: LanguageCode, seriesI
         },
       ],
     }
-  }
 }
 
 /**
@@ -373,17 +362,7 @@ export async function loadSeriesRegistry(): Promise<SeriesRegistry> {
       }
     }
   } catch {}
-  // Fallback to series.json file
-  try {
-    const response = await fetch(`${_docBaseUrl}/docs/series.json`)
-    if (!response.ok) throw new Error('Failed to load series.json')
-    const data = (await response.json()) as SeriesRegistry
-    seriesCache = data
-    return data
-  } catch (error) {
-    console.error('Error loading series registry:', error)
-    return { defaultSeries: 'llm', series: [] }
-  }
+  return { defaultSeries: 'llm', series: [] }
 }
 
 /**

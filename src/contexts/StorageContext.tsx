@@ -21,39 +21,7 @@ import {
   AuditLogRepo, PreferencesRepo,
 } from '@/data/index.js'
 import type { IStorageDriver } from '@/data/driver/types.js'
-import { MetaSyncService } from '@/data/sync/metasync.js'
-import type { SeriesJsonFile, MetaJsonFile } from '@/data/sync/metasync.js'
 import { debugLog } from '@/data/debug.js'
-
-/** Load series.json + _meta.json files → sync to SQLite (idempotent). */
-async function syncFiles(driver: IStorageDriver) {
-  const sync = new MetaSyncService(driver)
-  let seriesCount = 0, articleCount = 0, groupCount = 0
-  try {
-    const seriesResp = await fetch('/docs/series.json')
-    if (!seriesResp.ok) { debugLog.warn('sync', 'series.json 加载失败', { status: seriesResp.status }); return }
-    const seriesFile: SeriesJsonFile = await seriesResp.json()
-    const sr = await sync.syncSeries(seriesFile)
-    seriesCount = sr.series
-
-    for (const s of seriesFile.series) {
-      if (!s.enabled) continue
-      const lang = (s as any).language || 'zh-CN'
-      const version = (s as any).version || 'v0.1.0'
-      try {
-        const metaResp = await fetch(`/docs/${lang}/${version}/_meta.json`)
-        if (!metaResp.ok) { debugLog.warn('sync', `${s.id} _meta.json 加载失败`, { status: metaResp.status }); continue }
-        const metaFile: MetaJsonFile = await metaResp.json()
-        const mr = await sync.syncMeta(s.id, metaFile)
-        groupCount += mr.groups
-        articleCount += mr.articles
-      } catch { /* skip broken meta files */ }
-    }
-    debugLog.info('sync', '文件同步完成', { series: seriesCount, groups: groupCount, articles: articleCount })
-  } catch (err) {
-    debugLog.warn('sync', 'syncFiles 异常', { error: err instanceof Error ? err.message : String(err) })
-  }
-}
 
 interface StorageState {
   driver: IStorageDriver | null
@@ -108,8 +76,6 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         const prevVersion = await runner.currentVersion()
         const newVersion = await runner.run()
         debugLog.info('migration', `schema ${prevVersion} → ${newVersion}`)
-
-        await syncFiles(d)
 
         if (cancelled) { await d.close(); return }
 

@@ -128,19 +128,11 @@ const OSS_DEFAULTS = {
 }
 
 function loadOssConfig(): typeof OSS_DEFAULTS {
-  try {
-    const raw = localStorage.getItem('kbbook-oss-config')
-    if (raw) {
-      const saved = JSON.parse(raw)
-      // Only use localStorage if it has actual values (not all empty)
-      if (Object.values(saved).some((v: any) => v)) return { ...OSS_DEFAULTS, ...saved }
-    }
-  } catch {}
   return { ...OSS_DEFAULTS }
 }
 
 function saveOssConfig(cfg: typeof OSS_DEFAULTS) {
-  try { localStorage.setItem('kbbook-oss-config', JSON.stringify(cfg)); getPreferencesRepo()?.set('kbbook-oss-config', cfg) } catch {}
+  try { getPreferencesRepo()?.set('kbbook-oss-config', cfg) } catch {}
 }
 
 // ============================================================
@@ -149,7 +141,7 @@ function saveOssConfig(cfg: typeof OSS_DEFAULTS) {
 
 const SettingsPanel = () => {
   const [active, setActive] = useState<NavId>('general')
-  const [sidebarOpen, setSidebarOpen] = useState(() => { try { return localStorage.getItem("kbbook-settings-sidebar") !== "0" } catch { return true } })
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const isNarrow = useMediaQuery('(max-width:600px)')
   const { mode, networkUrl, syncStatus, syncing, switchMode, updateNetworkUrl, triggerSync, syncResult } = useDocMode()
   const [urlInput, setUrlInput] = useState(networkUrl)
@@ -260,8 +252,8 @@ const SettingsPanel = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="body2" color="text.secondary">工具栏无操作后自动隐藏（秒，0=不隐藏）：</Typography>
                 <TextField size="small" type="number" sx={{ width: 70 }}
-                  defaultValue={localStorage.getItem('kbbook-toolbar-autohide') || '10'}
-                  onChange={(e) => { const v = Math.max(0, parseInt(e.target.value) || 0); localStorage.setItem('kbbook-toolbar-autohide', String(v)); getPreferencesRepo()?.set('kbbook-toolbar-autohide', String(v)); setToast({message: `工具栏自动隐藏: ${v === 0 ? '关闭' : v + '秒'}`, severity:'success'}); }}
+                  defaultValue="10"
+                  onChange={(e) => { const v = Math.max(0, parseInt(e.target.value) || 0); getPreferencesRepo()?.set('kbbook-toolbar-autohide', String(v)); setToast({message: `工具栏自动隐藏: ${v === 0 ? '关闭' : v + '秒'}`, severity:'success'}); }}
                   inputProps={{ min: 0, max: 300, step: 5 }}
                 />
                 <Typography variant="caption" color="text.secondary">秒</Typography>
@@ -500,7 +492,7 @@ const SettingsPanel = () => {
               设置
             </Typography>
           )}
-          <IconButton size="small" onClick={() => setSidebarOpen((v) => { const n = !v; try { localStorage.setItem("kbbook-settings-sidebar", n ? "1" : "0"); getPreferencesRepo()?.set("kbbook-settings-sidebar", n ? "1" : "0") } catch {}; return n })}>
+          <IconButton size="small" onClick={() => setSidebarOpen((v) => { const n = !v; getPreferencesRepo()?.set("kbbook-settings-sidebar", n ? "1" : "0"); return n })}>
             {sidebarOpen ? <ChevronLeftIcon fontSize="small" /> : <MenuIcon fontSize="small" />}
           </IconButton>
         </Box>
@@ -508,7 +500,7 @@ const SettingsPanel = () => {
           <List dense disablePadding>
             {NAV_ITEMS.map((item) => (
               <ListItemButton key={item.id} selected={active === item.id}
-                onClick={() => { setActive(item.id); if (isNarrow) { try { localStorage.setItem("kbbook-settings-sidebar", "0") } catch {}; setSidebarOpen(false) } }}
+                onClick={() => { setActive(item.id); if (isNarrow) { setSidebarOpen(false) } }}
                 sx={{ mx: 0.5, borderRadius: 1, mb: 0.25,
                   '&.Mui-selected': { bgcolor: 'action.selected', '&:hover': { bgcolor: 'action.selected' } } }}>
                 <ListItemIcon sx={{ minWidth: 36, color: active === item.id ? 'primary.main' : 'text.secondary' }}>
@@ -525,7 +517,7 @@ const SettingsPanel = () => {
 
       {/* Floating expand button when sidebar collapsed */}
       {!sidebarOpen && (
-        <IconButton size="small" onClick={() => { try { localStorage.setItem("kbbook-settings-sidebar", "1") } catch {}; setSidebarOpen(true) }}
+        <IconButton size="small" onClick={() => { setSidebarOpen(true) }}
           sx={{ position: 'fixed', top: 'calc(var(--header-height, 64px) + 8px)', left: 8, zIndex: 20,
             bgcolor: 'background.paper', boxShadow: 2,
             '&:hover': { bgcolor: 'action.hover' } }}>

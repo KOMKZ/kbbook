@@ -40,13 +40,7 @@ import { getPreferencesRepo } from '@/data/bridge.js'
 type LayoutMode = 'list' | 'card'
 const LAYOUT_KEY = 'lz-home-layout'
 
-const loadLayoutMode = (): LayoutMode => {
-  try {
-    const v = localStorage.getItem(LAYOUT_KEY)
-    if (v === 'card' || v === 'list') return v
-  } catch {}
-  return 'list'
-}
+const loadLayoutMode = (): LayoutMode => 'list'
 
 /**
  * 多系列门户首页
@@ -62,7 +56,6 @@ const HomePage = () => {
 
   const setLayoutPersist = (mode: LayoutMode) => {
     setLayout(mode)
-    try { localStorage.setItem(LAYOUT_KEY, mode) } catch {}
     try { getPreferencesRepo()?.set(LAYOUT_KEY, mode) } catch {}
   }
 

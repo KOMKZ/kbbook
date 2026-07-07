@@ -64,20 +64,14 @@ const getReadingPositionKey = (seriesId?: string, version?: string, slug?: strin
   return `${READING_POSITION_NS}${seriesId}:${version}:${slug}`
 }
 
-const readReadingPosition = (key: string): ReadingPosition | null => {
+const readReadingPosition = async (key: string): Promise<ReadingPosition | null> => {
   try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<ReadingPosition>
-    if (typeof parsed.top !== 'number' || typeof parsed.ratio !== 'number') return null
-    return {
-      top: Math.max(0, parsed.top),
-      ratio: Math.min(1, Math.max(0, parsed.ratio)),
-      updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0,
-    }
-  } catch {
-    return null
-  }
+    const prefs = getPreferencesRepo()
+    if (!prefs) return null
+    const saved = await prefs.get<ReadingPosition>(key)
+    if (!saved || typeof saved.top !== 'number') return null
+    return saved
+  } catch { return null }
 }
 
 const writeReadingPosition = (key: string) => {
@@ -89,12 +83,8 @@ const writeReadingPosition = (key: string) => {
       ratio: max > 0 ? Math.min(1, top / max) : 0,
       updatedAt: Date.now(),
     }
-    localStorage.setItem(key, JSON.stringify(position))
-    // Dual-write to SQLite
-    try { getPreferencesRepo()?.set(key, position) } catch {}
-  } catch {
-    // localStorage 不可用时仅放弃本地记忆,不影响阅读。
-  }
+    getPreferencesRepo()?.set(key, position)
+  } catch {}
 }
 
 const findDocTitle = (items: DocMeta[], targetSlug?: string): string | undefined => {
@@ -260,9 +250,9 @@ const DocsPage = () => {
     if (!key || loading || !content || contentSlug !== slug) return
 
     let cancelled = false
-    const restore = () => {
+    const restore = async () => {
       if (cancelled) return
-      const saved = readReadingPosition(key)
+      const saved = await readReadingPosition(key)
       const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
       const savedTop = saved ? Math.max(saved.top, Math.round(saved.ratio * max)) : 0
       window.scrollTo({ top: Math.min(savedTop, max), behavior: 'instant' })
@@ -314,7 +304,7 @@ const DocsPage = () => {
 
       // 加载文档元数据
       const lang = getCurrentLanguage()
-      const meta = await loadDocsMeta(targetVersion, lang)
+      const meta = await loadDocsMeta(targetVersion, lang, seriesId)
       setDocs(meta.items)
 
       // URL 没有 slug 时:不再重定向到第一篇,而是让用户停留在系列详情页(由路由层处理)

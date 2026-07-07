@@ -92,6 +92,70 @@ export function resolveSlugFromParams(params: { slug?: string; group?: string; '
 // 文档内容缓存
 const docCache = new Map<string, string>()
 const metaCache = new Map<string, DocsMetaConfig>()
+
+/**
+ * Build DocsMetaConfig tree from SQLite groups + articles tables.
+ * Used as replacement for _meta.json file loading.
+ */
+export async function loadDocsMetaFromRepo(seriesId: string, _version: string): Promise<DocsMetaConfig | null> {
+  try {
+    const { getDriver } = await import('@/data/bridge.js')
+    const { GroupRepo } = await import('@/data/repo/group.js')
+    const { ArticleRepo } = await import('@/data/repo/article.js')
+
+    const driver = getDriver()
+    if (!driver) return null
+
+    const groupRepo = new GroupRepo(driver)
+    const articleRepo = new ArticleRepo(driver)
+
+    const groups = await groupRepo.findBySeries(seriesId)
+    const articles = await articleRepo.findBySeries(seriesId)
+
+    // Build parent → children map
+    const childrenMap = new Map<string | null, { groups: typeof groups; articles: typeof articles }>()
+    for (const g of groups) {
+      const key: string | null = g.parentGroupId ?? null
+      if (!childrenMap.has(key)) childrenMap.set(key, { groups: [], articles: [] })
+      childrenMap.get(key)!.groups.push(g)
+    }
+    for (const a of articles) {
+      const key: string | null = a.groupId ?? null
+      if (!childrenMap.has(key)) childrenMap.set(key, { groups: [], articles: [] })
+      childrenMap.get(key)!.articles.push(a)
+    }
+
+    // Recursively build DocMeta tree
+    function buildTree(parentId: string | null): DocMeta[] {
+      const items: DocMeta[] = []
+      const children = childrenMap.get(parentId)
+      if (!children) return items
+
+      for (const g of children.groups) {
+        items.push({
+          slug: g.slug,
+          title: g.title,
+          order: g.sortOrder,
+          isGroup: true,
+          items: buildTree(g.id),
+        })
+      }
+      for (const a of children.articles) {
+        items.push({
+          slug: a.slug,
+          title: a.title,
+          order: 0,
+        })
+      }
+      items.sort((a, b) => a.order - b.order)
+      return items
+    }
+
+    return { title: seriesId, items: buildTree(null) }
+  } catch {
+    return null
+  }
+}
 let versionsCache: VersionsConfig | null = null
 
 /**
@@ -165,14 +229,24 @@ export function getResolvedVersions(versions: VersionInfo[]): ResolvedVersionInf
 /**
  * 加载文档目录元数据
  */
-export async function loadDocsMeta(version: string, lang?: LanguageCode): Promise<DocsMetaConfig> {
+export async function loadDocsMeta(version: string, lang?: LanguageCode, seriesId?: string): Promise<DocsMetaConfig> {
   const language = lang || getCurrentLanguage()
   const cacheKey = `meta-${language}-${version}`
-  
+
   if (metaCache.has(cacheKey)) {
     return metaCache.get(cacheKey)!
   }
 
+  // Try SQLite Repo first
+  if (seriesId) {
+    const fromRepo = await loadDocsMetaFromRepo(seriesId, version)
+    if (fromRepo && fromRepo.items.length > 0) {
+      metaCache.set(cacheKey, fromRepo)
+      return fromRepo
+    }
+  }
+
+  // Fallback to _meta.json file
   try {
     const response = await fetch(`${_docBaseUrl}/docs/${language}/${version}/_meta.json`)
     if (!response.ok) {
@@ -306,7 +380,7 @@ export async function loadSeriesMeta(seriesId: string): Promise<DocsMetaConfig> 
   if (!s || !s.version) {
     throw new Error(`Series ${seriesId} has no version mapping`)
   }
-  return loadDocsMeta(s.version, (s.language as LanguageCode) ?? undefined)
+  return loadDocsMeta(s.version, (s.language as LanguageCode) ?? undefined, seriesId)
 }
 
 /**

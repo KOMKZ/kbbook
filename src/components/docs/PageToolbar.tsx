@@ -23,9 +23,9 @@ import { getPreferencesRepo } from '@/data/bridge.js'
 const KEY_Y = 'lz-pagetoolbar-y'
 
 function loadY(): number | null {
-  try { const v = localStorage.getItem(KEY_Y); return v ? parseInt(v) : null } catch { return null }
+  return null
 }
-function saveY(y: number) { try { localStorage.setItem(KEY_Y, String(y)); getPreferencesRepo()?.set(KEY_Y, y) } catch {} }
+function saveY(y: number) { try { getPreferencesRepo()?.set(KEY_Y, y) } catch {} }
 
 interface Props {
   extraButtons?: React.ReactNode
@@ -41,7 +41,7 @@ const PageToolbar = ({ extraButtons, seriesId }: Props) => {
 
   // Auto-collapse after inactivity (default 10s, configurable in Settings)
   // Timer resets on any toolbar button click. Scroll does NOT reset.
-  const autoHideDelay = parseInt(localStorage.getItem('kbbook-toolbar-autohide') || '10', 10) * 1000
+  const autoHideDelay = 10000
   const autoHideRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const resetAutoHide = useCallback(() => {

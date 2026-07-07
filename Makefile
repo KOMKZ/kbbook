@@ -88,6 +88,25 @@ endif
 	git commit -m "$(MSG)"
 	git push origin main
 
+# ---- Data CLI (SQLite) ----
+data-init:
+	node scripts/kbdata-cli.mjs init
+
+data-scan:
+	node scripts/kbdata-cli.mjs scan public/docs
+
+data-export:
+	node scripts/kbdata-cli.mjs export dump.json
+
+data-upload-oss:
+	node scripts/kbdata-cli.mjs upload-oss
+
+data-query:
+	node scripts/kbdata-cli.mjs query "$(SQL)"
+
+data-exec:
+	node scripts/kbdata-cli.mjs exec "$(SQL)"
+
 help:
 	@echo "KBBook commands"
 	@echo "  make build            TypeScript + Vite build"
@@ -95,3 +114,11 @@ help:
 	@echo "  make check-sensitive  Scan credentials before push"
 	@echo "  make push MSG='...'   git add/commit/push"
 	@echo "  make lint             Run ESLint"
+	@echo ""
+	@echo "Data CLI:"
+	@echo "  make data-init             Create new kbbsqllite.kbdata"
+	@echo "  make data-scan             Scan public/docs/*.md → SQLite"
+	@echo "  make data-export           Export SQLite → dump.json"
+	@echo "  make data-upload-oss       Upload SQLite to OSS"
+	@echo "  make data-query SQL='...'  Run SELECT query"
+	@echo "  make data-exec SQL='...'   Run INSERT/UPDATE/DELETE"

@@ -6,6 +6,9 @@
  */
 
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
+import CircularProgress from '@mui/material/CircularProgress'
 import { createDriver } from '@/data/driver/factory.js'
 import { MigrationRunner } from '@/data/schema/migrations.js'
 import { allMigrations } from '@/data/schema/index.js'
@@ -48,45 +51,52 @@ export function useRepos(): Repos {
 /** Load initial data from bundled .kbdata binary if DB is empty. */
 async function loadInitialData(d: IStorageDriver) {
   const cnt = await d.query<{c:number}>('SELECT COUNT(*) as c FROM articles')
-  if (cnt[0]?.c && cnt[0].c > 0) return
-  debugLog.info('storage', '空数据库，加载初始数据 /kbbsqllite-init.kbdata')
-
-  const resp = await fetch('/kbbsqllite-init.kbdata')
-  if (!resp.ok) {
-    debugLog.warn('storage', `.kbdata fetch failed: ${resp.status}`)
+  if (cnt[0]?.c && cnt[0].c > 0) {
+    console.log('[StorageProvider] DB already has data, skip init')
+    debugLog.info('storage', `已有 ${cnt[0].c} 篇文章，跳过初始加载`)
     return
   }
 
+  console.log('[StorageProvider] DB empty, loading /kbbsqllite-init.kbdata')
+  const resp = await fetch('/kbbsqllite-init.kbdata')
+  if (!resp.ok) {
+    const err = `.kbdata fetch failed: ${resp.status} ${resp.statusText}`
+    console.error('[StorageProvider]', err)
+    debugLog.error('storage', err)
+    throw new Error(err)
+  }
+
+  console.log('[StorageProvider] .kbdata fetched, size:', resp.headers.get('content-length'))
   const buf = await resp.arrayBuffer()
+  console.log('[StorageProvider] Buffer size:', buf.byteLength)
+
   const SQL = (await import('sql.js')).default
   const initSql = await SQL()
   const tempDb = new initSql.Database(new Uint8Array(buf))
 
-  // Export all user tables from temp DB
+  let total = 0
   const tableList = tempDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
   for (const { values } of tableList) {
     for (const [tname] of values) {
       const name = tname as string
       if (!name || name === 'sqlite_sequence') continue
-      try {
-        const data = tempDb.exec(`SELECT * FROM "${name}"`)
-        if (!data.length || !data[0].values.length) continue
-        const cols = data[0].columns
-        const rows = data[0].values
-        for (const row of rows) {
-          const vals: any[] = []
-          for (let i = 0; i < cols.length; i++) vals.push(row[i])
-          const ph = vals.map(() => '?').join(',')
-          await d.exec(
-            `INSERT OR IGNORE INTO "${name}" (${cols.map(c => `"${c}"`).join(',')}) VALUES (${ph})`,
-            vals,
-          )
-        }
-      } catch {}
+      const data = tempDb.exec(`SELECT * FROM "${name}"`)
+      if (!data.length || !data[0].values.length) continue
+      const cols = data[0].columns
+      const rows = data[0].values
+      console.log(`[StorageProvider] importing ${name}: ${rows.length} rows, cols:`, cols.join(','))
+      for (const row of rows) {
+        const vals: any[] = []
+        for (let i = 0; i < cols.length; i++) vals.push(row[i])
+        const ph = vals.map(() => '?').join(',')
+        await d.exec(`INSERT OR IGNORE INTO "${name}" (${cols.map(c => `"${c}"`).join(',')}) VALUES (${ph})`, vals)
+      }
+      total += rows.length
     }
   }
   tempDb.close()
-  debugLog.info('storage', '初始数据加载完成')
+  console.log(`[StorageProvider] init complete: ${total} rows imported`)
+  debugLog.info('storage', `初始数据加载完成: ${total} rows`)
 }
 
 export function StorageProvider({ children }: { children: React.ReactNode }) {
@@ -111,8 +121,10 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         debugLog.info('storage', '初始化完成')
         setState({ driver: d, ready: true, error: null })
       } catch (err) {
-        debugLog.error('storage', '初始化失败', { error: (err as Error).message })
-        if (!cancelled) setState({ driver: null, ready: false, error: (err as Error).message })
+        const msg = err instanceof Error ? err.message : String(err)
+        debugLog.error('storage', '初始化失败', { error: msg, stack: (err as Error).stack })
+        console.error('[StorageProvider]', msg, err)
+        if (!cancelled) setState({ driver: null, ready: false, error: msg })
       }
     }
     init()
@@ -132,8 +144,20 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     return r
   }, [state.driver, state.ready])
 
-  if (!state.ready && !state.error) {
-    return <StorageCtx.Provider value={{ ...state, repos }}>{null}</StorageCtx.Provider>
+  if (!state.ready) {
+    return (
+      <StorageCtx.Provider value={{ ...state, repos }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 2 }}>
+          <CircularProgress size={32} />
+          <Typography variant="body2" color="text.secondary">加载数据中...</Typography>
+          {state.error && (
+            <Typography variant="caption" color="error" sx={{ maxWidth: 400, textAlign: 'center', whiteSpace: 'pre-wrap' }}>
+              {state.error}
+            </Typography>
+          )}
+        </Box>
+      </StorageCtx.Provider>
+    )
   }
 
   return <StorageCtx.Provider value={{ ...state, repos }}>{children}</StorageCtx.Provider>

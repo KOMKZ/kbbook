@@ -24,30 +24,36 @@ import type { IStorageDriver } from '@/data/driver/types.js'
 import type { DriverType } from '@/data/driver/factory.js'
 import { MetaSyncService } from '@/data/sync/metasync.js'
 import type { SeriesJsonFile, MetaJsonFile } from '@/data/sync/metasync.js'
+import { debugLog } from '@/data/debug.js'
 
 /** Load series.json + _meta.json files → sync to SQLite (idempotent). */
 async function syncFiles(driver: IStorageDriver) {
   const sync = new MetaSyncService(driver)
+  let seriesCount = 0, articleCount = 0, groupCount = 0
   try {
-    // 1. Load and sync series.json
     const seriesResp = await fetch('/docs/series.json')
-    if (!seriesResp.ok) return
+    if (!seriesResp.ok) { debugLog.warn('sync', 'series.json 加载失败', { status: seriesResp.status }); return }
     const seriesFile: SeriesJsonFile = await seriesResp.json()
-    await sync.syncSeries(seriesFile)
+    const sr = await sync.syncSeries(seriesFile)
+    seriesCount = sr.series
 
-    // 2. For each enabled series, load and sync _meta.json
     for (const s of seriesFile.series) {
       if (!s.enabled) continue
       const lang = (s as any).language || 'zh-CN'
       const version = (s as any).version || 'v0.1.0'
       try {
         const metaResp = await fetch(`/docs/${lang}/${version}/_meta.json`)
-        if (!metaResp.ok) continue
+        if (!metaResp.ok) { debugLog.warn('sync', `${s.id} _meta.json 加载失败`, { status: metaResp.status }); continue }
         const metaFile: MetaJsonFile = await metaResp.json()
-        await sync.syncMeta(s.id, metaFile)
+        const mr = await sync.syncMeta(s.id, metaFile)
+        groupCount += mr.groups
+        articleCount += mr.articles
       } catch { /* skip broken meta files */ }
     }
-  } catch { /* sync is best-effort; don't block app startup */ }
+    debugLog.info('sync', '文件同步完成', { series: seriesCount, groups: groupCount, articles: articleCount })
+  } catch (err) {
+    debugLog.warn('sync', 'syncFiles 异常', { error: err instanceof Error ? err.message : String(err) })
+  }
 }
 
 interface StorageState {
@@ -101,24 +107,32 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       // Determine driver type
       const stored = localStorage.getItem('kbbook-storage-driver') as DriverType | null
       const available = detectAvailableDrivers()
-      const driverType: DriverType = stored && available.includes(stored) ? stored : 'localstorage'
+      const driverType: DriverType = stored && available.includes(stored) ? stored : 'sqljs'
 
       try {
+        // Restore debug toggle
+        if (localStorage.getItem('kbbook-debug-enabled') === '1') debugLog.setEnabled(true)
+
+        debugLog.info('storage', `选择驱动: ${driverType}`, { available: available.join(',') })
         const d = createDriver(driverType)
         await d.open()
+        debugLog.info('storage', `${driverType} 已打开`, { persistent: (d as any).persistent })
 
         // Run migrations (idempotent)
         const runner = new MigrationRunner(d, allMigrations)
-        await runner.run()
+        const prevVersion = await runner.currentVersion()
+        const newVersion = await runner.run()
+        debugLog.info('migration', `schema ${prevVersion} → ${newVersion}`, { latest: runner.latestVersion() })
 
         // Sync file data (series.json + _meta.json) into SQLite
         await syncFiles(d)
 
         if (cancelled) { await d.close(); return }
 
+        debugLog.info('storage', '初始化完成', { driverType, schemaVersion: newVersion })
         setState({ driver: d, ready: true, error: null, driverType })
       } catch (err) {
-        console.error('StorageProvider init failed:', err)
+        debugLog.error('storage', '初始化失败', { error: err instanceof Error ? err.message : String(err) })
         if (!cancelled) {
           setState({
             driver: null,

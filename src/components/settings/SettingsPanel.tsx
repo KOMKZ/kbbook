@@ -29,6 +29,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import LinearProgress from '@mui/material/LinearProgress'
 import CloudSyncIcon from '@mui/icons-material/CloudSync'
 import { getPreferencesRepo } from '@/data/bridge.js'
+import { debugLog } from '@/data/debug.js'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
@@ -154,6 +155,8 @@ const SettingsPanel = () => {
   const { mode, networkUrl, syncStatus, syncing, switchMode, updateNetworkUrl, triggerSync, syncResult } = useDocMode()
   const [urlInput, setUrlInput] = useState(networkUrl)
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
+  const [debugEnabled, setDebugEnabled] = useState(() => debugLog.enabled || localStorage.getItem('kbbook-debug-enabled') === '1')
+  const [, setForceUpdate] = useState(0)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
   const [webVersion, setWebVersion] = useState<string>('...')
   const [appVersion, setAppVersion] = useState<string>('...')
@@ -270,7 +273,7 @@ const SettingsPanel = () => {
             <Section title="存储引擎" subtitle="LocalStorage 轻量无需加载；SQLite 支持复杂查询（切换后需刷新生效）">
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                 <select
-                  defaultValue={localStorage.getItem('kbbook-storage-driver') || 'localstorage'}
+                  defaultValue={localStorage.getItem('kbbook-storage-driver') || 'sqljs'}
                   onChange={(e) => {
                     const v = e.target.value
                     localStorage.setItem('kbbook-storage-driver', v)
@@ -279,9 +282,63 @@ const SettingsPanel = () => {
                   }}
                   style={{ padding: '6px 12px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem' }}
                 >
-                  <option value="localstorage">LocalStorage（默认）</option>
-                  <option value="sqljs">SQLite (sql.js WASM)</option>
+                  <option value="sqljs">SQLite (sql.js WASM) — 默认</option>
+                  <option value="localstorage">LocalStorage</option>
                 </select>
+              </Box>
+            </Section>
+            <Section title="调试日志" subtitle="打开后记录数据层关键操作，用于验证 SQLite 是否正常工作">
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Switch
+                    checked={debugEnabled}
+                    onChange={(_, v) => {
+                      setDebugEnabled(v)
+                      debugLog.setEnabled(v)
+                      localStorage.setItem('kbbook-debug-enabled', v ? '1' : '0')
+                      getPreferencesRepo()?.set('kbbook-debug-enabled', v ? '1' : '0')
+                      if (!v) setForceUpdate((n) => n + 1)
+                    }}
+                  />
+                  <Typography variant="body2">
+                    {debugEnabled ? '已开启 — 日志记录中' : '已关闭'}
+                  </Typography>
+                  {debugEnabled && (
+                    <Button size="small" onClick={() => { debugLog.clear(); setForceUpdate((n) => n + 1) }}>
+                      清空
+                    </Button>
+                  )}
+                </Box>
+                {debugEnabled && (
+                  <>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
+                      {(() => {
+                        const s = debugLog.summary()
+                        return (
+                          <Typography variant="caption" color="text.secondary">
+                            共 {s.total} 条 · 错误 {s.errors} · 警告 {s.warns} · 模块: {s.modules.join(', ')}
+                          </Typography>
+                        )
+                      })()}
+                    </Box>
+                    <Paper variant="outlined" sx={{ maxHeight: 300, overflow: 'auto', p: 1, bgcolor: 'grey.50', fontFamily: 'monospace', fontSize: '0.72rem', lineHeight: 1.6 }}>
+                      {debugLog.getRecent(50).map((e) => (
+                        <Box key={e.id} sx={{
+                          color: e.level === 'error' ? 'error.main' : e.level === 'warn' ? 'warning.main' : 'text.primary',
+                          py: 0.25,
+                        }}>
+                          <span style={{ opacity: 0.5 }}>{new Date(e.timestamp).toLocaleTimeString()}</span>
+                          {' '}[{e.module}]{' '}
+                          {e.message}
+                          {e.detail && <span style={{ opacity: 0.6, marginLeft: 4 }}>{e.detail}</span>}
+                        </Box>
+                      ))}
+                      {debugLog.getRecent(1).length === 0 && (
+                        <Typography variant="caption" color="text.disabled">暂无日志 — 刷新页面后查看初始化日志</Typography>
+                      )}
+                    </Paper>
+                  </>
+                )}
               </Box>
             </Section>
           </>

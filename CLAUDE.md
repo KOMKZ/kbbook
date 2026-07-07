@@ -69,6 +69,73 @@ All content lives under `public/docs/`:
 
 ---
 
+## SQLite Data Layer — Pitfalls & Lessons
+
+> **这些坑在 2026-07-07 ~ 07-08 的 SQLite 数据层开发中反复踩过，记录下来避免重犯。**
+
+### 1. Vite + sql.js WASM 打包
+
+**错误方式**:
+```ts
+// ❌ CDN locateFile — APK 离线不可达
+initSqlJs({ locateFile: () => 'https://cdn.jsdelivr.net/...' })
+
+// ❌ 不传配置 — sql.js 默认 fetch 'sql-wasm.wasm'，Vite 不打包
+initSqlJs()
+```
+
+**正确方式**:
+```ts
+// ✅ ?url import 让 Vite 打包 WASM，返回运行时 URL
+const wasm = await import('sql.js/dist/sql-wasm.wasm?url')
+initSqlJs({ locateFile: () => wasm.default })
+```
+
+`?url` 是 Vite 特殊后缀，告诉打包器把文件包含进产物。不加的话 `.wasm` 文件不会在 APK 里。
+
+### 2. APK 调试
+
+APK 里的 WebView 没有 Chrome DevTools。用 `adb logcat` 看 console：
+
+```bash
+# 清日志 → 启动 App → 抓 StorageProvider 日志
+adb logcat -c
+adb logcat -d | grep 'Capacitor/Console'
+```
+
+关键日志关键词：`StorageProvider`、`kbdata`、`wasm`、`init complete`
+
+### 3. 数据文件分离
+
+- **KBBook（公开）**: 只能有 demo 数据。数据层代码可以有，但不能嵌入真实数据。
+- **lz-learn-portal（私有）**: build 时从 `public/docs/` 生成 `.kbdata`，打包进 APK。
+- 生成命令: `node scripts/kbdata-cli.mjs build-init-db public/docs --db public/kbbsqllite-init.kbdata`
+
+### 4. 启动流程
+
+StorageProvider 启动顺序：
+```
+open sqljs → run migrations → 检查 articles 是否为空
+  ├─ 空 → fetch /kbbsqllite-init.kbdata → 逐表导入
+  └─ 有数据 → 跳过
+→ setState({ ready: true }) → render children
+```
+
+**必须** block render 直到 ready，否则组件会在数据未就绪时渲染（缓存空结果，永久白屏）。
+
+### 5. 数据源（架构铁律）
+
+- **运行时不读 _meta.json / series.json**。这些文件仅用于 build 时生成 .kbdata。
+- 所有运行时数据从 SQLite 读取。
+- 文章正文（.md）仍从文件系统读取——正文不存 SQLite。
+
+### 6. 迁移数据不进 KBBook git
+
+v002 migration 嵌入 INSERT 语句 = 把私有数据提交到公开仓库。
+用 `.kbdata` 二进制文件代替，由 lz-learn-portal build 时生成，不进入 git。
+
+---
+
 ## Knowledge Boundary & Gate
 
 > **原则**: 本项目是公开的开源工具。`CLAUDE.md` 和 `.claude/agents/` 跟着 git 走，clone 的人都能看到。

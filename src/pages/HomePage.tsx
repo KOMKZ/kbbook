@@ -78,22 +78,22 @@ const HomePage = () => {
     if (!('clientY' in (_event?.activatorEvent || {}))) return
     const y = (_event as any).activatorEvent?.clientY
     if (typeof y !== 'number') return
-    const EDGE = 80, SPEED = 8
+    const EDGE = 120, MAX_SPEED = 30
     if (y < EDGE) {
+      const dist = (EDGE - y) / EDGE, speed = Math.max(2, Math.round(MAX_SPEED * dist * dist))
       if (!autoScrollRef.current) {
         autoScrollRef.current = window.setInterval(() => {
-          const newTop = Math.max(0, window.scrollY - SPEED)
-          if (window.scrollY === newTop) { if (autoScrollRef.current) clearInterval(autoScrollRef.current); autoScrollRef.current = null }
-          else window.scrollBy(0, -SPEED)
+          window.scrollBy(0, -speed)
+          if (window.scrollY <= 0 && autoScrollRef.current) { clearInterval(autoScrollRef.current); autoScrollRef.current = null }
         }, 16) as unknown as number
       }
     } else if (y > window.innerHeight - EDGE) {
+      const dist = (y - (window.innerHeight - EDGE)) / EDGE, speed = Math.max(2, Math.round(MAX_SPEED * dist * dist))
       if (!autoScrollRef.current) {
         autoScrollRef.current = window.setInterval(() => {
           const max = document.documentElement.scrollHeight - window.innerHeight
-          const newTop = Math.min(max, window.scrollY + SPEED)
-          if (window.scrollY === newTop) { if (autoScrollRef.current) clearInterval(autoScrollRef.current); autoScrollRef.current = null }
-          else window.scrollBy(0, SPEED)
+          window.scrollBy(0, speed)
+          if (window.scrollY >= max && autoScrollRef.current) { clearInterval(autoScrollRef.current); autoScrollRef.current = null }
         }, 16) as unknown as number
       }
     } else {

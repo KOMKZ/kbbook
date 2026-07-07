@@ -13,6 +13,38 @@
 
 import type { DatabaseDump } from '../driver/types.js'
 
+// ── Table classification ────────────────────────────────────────────────────
+
+/** Tables whose source-of-truth is PC (uploaded to OSS, App REPLACEs on sync). */
+export const STRUCTURAL_TABLES = [
+  'series',
+  'groups',
+  'articles',
+  'article_links',
+  'schema_version',
+] as const
+
+/** Tables owned by App at runtime — NEVER uploaded to OSS, NEVER overwritten. */
+export const BEHAVIORAL_TABLES = [
+  'preferences',
+  'reading_history',
+  'reading_positions',
+  'audit_log',
+] as const
+
+export type StructuralTable = (typeof STRUCTURAL_TABLES)[number]
+
+/** Filter a dump to only structural tables (for OSS upload). */
+export function filterStructural(dump: DatabaseDump): DatabaseDump {
+  const tables: Record<string, Record<string, unknown>[]> = {}
+  for (const name of STRUCTURAL_TABLES) {
+    if (dump.tables[name]) tables[name] = dump.tables[name]
+  }
+  return { ...dump, tables }
+}
+
+// ── Config ───────────────────────────────────────────────────────────────────
+
 export interface OssConfig {
   bucket: string
   region: string
@@ -79,11 +111,19 @@ export function mergeFromOss(localDump: DatabaseDump, remoteDump: DatabaseDump):
     version: 1, exportedAt: Date.now(), driverType: localDump.driverType,
     schemaVersion: Math.max(localDump.schemaVersion, remoteDump.schemaVersion), tables: {},
   }
-  for (const t of ['series', 'groups', 'articles', 'article_links']) {
+  // Structural → from remote (PC source of truth)
+  for (const t of STRUCTURAL_TABLES) {
     merged.tables[t] = remoteDump.tables[t] ?? localDump.tables[t] ?? []
   }
-  for (const t of ['reading_history', 'reading_positions', 'preferences', 'audit_log', 'stats_snapshot', 'migration_log']) {
+  // Behavioral → from local (App owns this data)
+  for (const t of BEHAVIORAL_TABLES) {
     merged.tables[t] = localDump.tables[t] ?? remoteDump.tables[t] ?? []
+  }
+  // Unknown tables → preserve local
+  for (const t of Object.keys(localDump.tables)) {
+    if (!STRUCTURAL_TABLES.includes(t as StructuralTable) && !BEHAVIORAL_TABLES.includes(t as any)) {
+      merged.tables[t] = localDump.tables[t]
+    }
   }
   return merged
 }
@@ -92,11 +132,13 @@ export function mergeFromOss(localDump: DatabaseDump, remoteDump: DatabaseDump):
 
 /** Upload a DB dump to OSS + update latest.json pointer. PC-side only. */
 export async function uploadSnapshot(dump: DatabaseDump, config: OssConfig): Promise<OssResult> {
+  // Only upload structural tables — behavioral tables are App-local, never leave the device
+  const filtered = filterStructural(dump)
   const base = config.path || 'lz-learn-portal-sqllite-data'
   const ts = new Date().toISOString().replace(/[:.]/g, '-')
   const key = `${base}/kbdata/${ts}.json`
   const url = ossUrl(config.bucket, config.region, key)
-  const body = JSON.stringify(dump)
+  const body = JSON.stringify(filtered)
   try {
     const auth = await ossSign('PUT', key, config.bucket, config.accessKeyId, config.accessKeySecret)
     const resp = await fetch(url, {

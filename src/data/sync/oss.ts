@@ -54,7 +54,7 @@ function ossUrl(bucket: string, region: string, objectKey: string): string {
 
 /** Download the latest DB snapshot from OSS. */
 export async function pullLatest(config: OssConfig): Promise<OssResult & { dump?: DatabaseDump }> {
-  const base = config.path || 'kbbsqllite-data'
+  const base = config.path || 'lz-learn-portal-sqllite-data'
   const key = `${base}/kbdata/latest.json`
   const url = ossUrl(config.bucket, config.region, key)
   try {
@@ -92,7 +92,7 @@ export function mergeFromOss(localDump: DatabaseDump, remoteDump: DatabaseDump):
 
 /** Upload a DB dump to OSS + update latest.json pointer. PC-side only. */
 export async function uploadSnapshot(dump: DatabaseDump, config: OssConfig): Promise<OssResult> {
-  const base = config.path || 'kbbsqllite-data'
+  const base = config.path || 'lz-learn-portal-sqllite-data'
   const ts = new Date().toISOString().replace(/[:.]/g, '-')
   const key = `${base}/kbdata/${ts}.json`
   const url = ossUrl(config.bucket, config.region, key)

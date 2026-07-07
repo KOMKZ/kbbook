@@ -19,7 +19,6 @@ import ListItemText from '@mui/material/ListItemText'
 import Tooltip from '@mui/material/Tooltip'
 import IconButton from '@mui/material/IconButton'
 import Typography from '@mui/material/Typography'
-import Switch from '@mui/material/Switch'
 import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
@@ -33,7 +32,6 @@ import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import WifiIcon from '@mui/icons-material/Wifi'
-import WifiOffIcon from '@mui/icons-material/WifiOff'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import SystemUpdateIcon from '@mui/icons-material/SystemUpdate'
 import AddIcon from '@mui/icons-material/Add'
@@ -122,7 +120,7 @@ const SIDEBAR_WIDTH = 180
 const OSS_DEFAULTS = {
   endpoint: (typeof __OSS_ENDPOINT__ !== 'undefined' && __OSS_ENDPOINT__) || 'https://oss-cn-shenzhen.aliyuncs.com',
   bucket: (typeof __OSS_BUCKET__ !== 'undefined' && __OSS_BUCKET__) || 'yogan-static',
-  path: (typeof __OSS_PATH__ !== 'undefined' && __OSS_PATH__) || 'lz-learn-portal-data',
+  path: (typeof __OSS_PATH__ !== 'undefined' && __OSS_PATH__) || 'lz-learn-portal-sqllite-data',
   accessKeyId: (typeof __OSS_ACCESS_KEY_ID__ !== 'undefined' && __OSS_ACCESS_KEY_ID__) || '',
   accessKeySecret: (typeof __OSS_ACCESS_KEY_SECRET__ !== 'undefined' && __OSS_ACCESS_KEY_SECRET__) || '',
 }
@@ -143,7 +141,7 @@ const SettingsPanel = () => {
   const [active, setActive] = useState<NavId>('general')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const isNarrow = useMediaQuery('(max-width:600px)')
-  const { mode, networkUrl, syncStatus, syncing, switchMode, updateNetworkUrl, triggerSync, syncResult } = useDocMode()
+  const { networkUrl, syncStatus, syncing, updateNetworkUrl, triggerSync, syncResult } = useDocMode()
   const [urlInput, setUrlInput] = useState(networkUrl)
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
@@ -201,29 +199,22 @@ const SettingsPanel = () => {
     }).catch(() => {})
   }, [])
 
-  const isLocal = mode === 'local'
   const isSyncing = syncing || (progress != null && progress.stage !== 'done')
   const progressPercent = progress?.percent ?? 0
-
-  const handleModeToggle = async () => {
-    const newMode = isLocal ? 'network' : 'local'
-    await switchMode(newMode)
-    setToast({ message: `已切换至 ${newMode === 'local' ? '本地离线' : '网络直连'} 模式`, severity: 'success' })
-  }
 
   const handleUrlSave = async () => {
     await updateNetworkUrl(urlInput)
     setToast({ message: '网络地址已保存', severity: 'success' })
   }
 
-  const handleSync = async () => {
+  const handleDocSync = async () => {
     setProgress(null)
     try {
       await triggerSync(ossCfg)
-      setToast({ message: 'OSS 同步完成', severity: 'success' })
+      setToast({ message: '文档同步完成', severity: 'success' })
     } catch (e: any) {
       setProgress(null)
-      setToast({ message: e?.message || 'OSS 同步失败，请检查网络连接', severity: 'error' })
+      setToast({ message: e?.message || '同步失败', severity: 'error' })
     }
   }
 
@@ -234,18 +225,6 @@ const SettingsPanel = () => {
       case 'general':
         return (
           <>
-            <Section
-              title="阅读模式"
-              subtitle={isLocal ? '本地离线 — APK 内置 + OSS 同步' : '网络直连 — 连接开发服务器'}
-              icon={isLocal ? <WifiOffIcon color="action" /> : <WifiIcon color="primary" />}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">
-                  当前: {isLocal ? '离线模式' : '在线模式'}
-                </Typography>
-                <Switch checked={!isLocal} onChange={handleModeToggle} />
-              </Box>
-            </Section>
             <ToolbarSizeSection />
             <Section title="外观" subtitle="主题、工具栏自动隐藏">
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -264,23 +243,28 @@ const SettingsPanel = () => {
       case 'sync':
         return (
           <>
+            {/* 内网同步 */}
             <Section
-              title="服务器地址"
-              subtitle="输入开发服务器地址"
+              title="内网同步"
+              subtitle="从开发服务器拉取最新文档和数据"
               icon={<WifiIcon color="primary" />}
             >
-              <Box sx={{ display: 'flex', gap: 1 }}>
+              <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
                 <TextField size="small" fullWidth value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
-                  placeholder="http://localhost:3004"
+                  placeholder="http://192.168.x.x:3004"
                 />
                 <Button variant="contained" onClick={handleUrlSave} size="small">保存</Button>
               </Box>
+              <Button variant="outlined" size="small" onClick={handleDocSync} disabled={isSyncing}
+                startIcon={isSyncing ? <CircularProgress size={14} /> : <SyncIcon fontSize="small" />}>
+                {isSyncing ? '同步中...' : '从内网同步文档'}
+              </Button>
             </Section>
 
-            {/* OSS sync — always available regardless of mode */}
+            {/* OSS 文档同步 */}
             <Section
-              title="文档同步 (OSS)"
+              title="OSS 文档同步"
               subtitle="从阿里云 OSS 拉取最新文档到本地"
               icon={<CloudSyncIcon color="primary" />}
             >
@@ -319,7 +303,7 @@ const SettingsPanel = () => {
               )}
 
               <Button variant="outlined" startIcon={isSyncing ? <CircularProgress size={16} /> : <CloudSyncIcon />}
-                onClick={handleSync} disabled={isSyncing} fullWidth>
+                onClick={handleDocSync} disabled={isSyncing} fullWidth>
                 {isSyncing ? '同步中...' : '立即同步'}
               </Button>
             </Section>
@@ -447,7 +431,7 @@ const SettingsPanel = () => {
                 <Box className="kv"><Typography variant="body2" color="text.secondary">前端版本</Typography><Typography variant="body2" fontWeight={600}>{webVersion}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">App 版本</Typography><Typography variant="body2" fontWeight={600}>{appVersion}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">品牌</Typography><Typography variant="body2" fontWeight={600}>{siteConfig.name}</Typography></Box>
-                <Box className="kv"><Typography variant="body2" color="text.secondary">模式</Typography><Typography variant="body2" fontWeight={600}>{isLocal ? '本地离线' : '网络直连'}</Typography></Box>
+                <Box className="kv"><Typography variant="body2" color="text.secondary">模式</Typography><Typography variant="body2" fontWeight={600}>本机 SQLite</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">网络地址</Typography><Typography variant="body2" fontWeight={600}>{networkUrl}</Typography></Box>
                 {syncStatus.lastSyncTime && (
                   <>

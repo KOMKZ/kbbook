@@ -109,8 +109,8 @@ const SIDEBAR_WIDTH = 180
 
 const OSS_DEFAULTS = {
   endpoint: 'https://oss-cn-shenzhen.aliyuncs.com',
-  bucket: '',
-  path: '',
+  bucket: 'yogan-static',
+  path: 'lz-learn-portal-data',
   accessKeyId: '',
   accessKeySecret: '',
 }

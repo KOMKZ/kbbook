@@ -148,7 +148,7 @@ function saveOssConfig(cfg: typeof OSS_DEFAULTS) {
 
 const SettingsPanel = () => {
   const [active, setActive] = useState<NavId>('general')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(() => { try { return localStorage.getItem("kbbook-settings-sidebar") !== "0" } catch { return true } })
   const isNarrow = useMediaQuery('(max-width:600px)')
   const { mode, networkUrl, syncStatus, syncing, switchMode, updateNetworkUrl, triggerSync, syncResult } = useDocMode()
   const [urlInput, setUrlInput] = useState(networkUrl)
@@ -459,7 +459,7 @@ const SettingsPanel = () => {
               设置
             </Typography>
           )}
-          <IconButton size="small" onClick={() => setSidebarOpen(!sidebarOpen)}>
+          <IconButton size="small" onClick={() => setSidebarOpen((v) => { const n = !v; try { localStorage.setItem("kbbook-settings-sidebar", n ? "1" : "0") } catch {}; return n })}>
             {sidebarOpen ? <ChevronLeftIcon fontSize="small" /> : <MenuIcon fontSize="small" />}
           </IconButton>
         </Box>
@@ -467,7 +467,7 @@ const SettingsPanel = () => {
           <List dense disablePadding>
             {NAV_ITEMS.map((item) => (
               <ListItemButton key={item.id} selected={active === item.id}
-                onClick={() => { setActive(item.id); if (isNarrow) setSidebarOpen(false) }}
+                onClick={() => { setActive(item.id); if (isNarrow) { try { localStorage.setItem("kbbook-settings-sidebar", "0") } catch {}; setSidebarOpen(false) } }}
                 sx={{ mx: 0.5, borderRadius: 1, mb: 0.25,
                   '&.Mui-selected': { bgcolor: 'action.selected', '&:hover': { bgcolor: 'action.selected' } } }}>
                 <ListItemIcon sx={{ minWidth: 36, color: active === item.id ? 'primary.main' : 'text.secondary' }}>
@@ -484,7 +484,7 @@ const SettingsPanel = () => {
 
       {/* Floating expand button when sidebar collapsed */}
       {!sidebarOpen && (
-        <IconButton size="small" onClick={() => setSidebarOpen(true)}
+        <IconButton size="small" onClick={() => { try { localStorage.setItem("kbbook-settings-sidebar", "1") } catch {}; setSidebarOpen(true) }}
           sx={{ position: 'absolute', top: 8, left: 8, zIndex: 20,
             bgcolor: 'background.paper', boxShadow: 2,
             '&:hover': { bgcolor: 'action.hover' } }}>

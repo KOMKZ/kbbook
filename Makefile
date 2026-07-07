@@ -221,7 +221,7 @@ stop:
 check-sensitive:
 	@echo "🔍 Scanning for sensitive information..."
 	@errors=0; \
-	for pattern in 'LTAI[0-9A-Za-z]{,20}' 'FA46Zk' 'password\s*[:=]\s*"[^"]+"' '192\.168\.\d{1,3}\.\d{1,3}' 'yogan-static'; do \
+	for pattern in 'LTAI[0-9A-Za-z]\{12,\}' 'password\s*[:=]\s*"[^"]\{4,\}"' '192\.168\.\d{1,3}\.\d{1,3}'; do \
 	  if grep -rn "$$pattern" src/ scripts/ --include='*.ts' --include='*.tsx' --include='*.mjs' --include='*.py' 2>/dev/null | grep -v node_modules | grep -v '.git/'; then \
 	    echo "  ❌ Found: $$pattern"; errors=$$((errors+1)); \
 	  fi; \

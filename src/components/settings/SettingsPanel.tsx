@@ -125,7 +125,12 @@ const OSS_DEFAULTS = {
 }
 
 function loadOssConfig(): typeof OSS_DEFAULTS {
-  return { ...OSS_DEFAULTS }
+  const cfg = { ...OSS_DEFAULTS }
+  // Fix old cached paths to new default
+  if (cfg.path === 'lz-learn-portal-data' || cfg.path === 'kbbsqllite-data') {
+    cfg.path = 'lz-learn-portal-sqllite-data'
+  }
+  return cfg
 }
 
 function saveOssConfig(cfg: typeof OSS_DEFAULTS) {
@@ -196,6 +201,10 @@ const SettingsPanel = () => {
     getPreferencesRepo()?.get<typeof OSS_DEFAULTS>('kbbook-oss-config').then((saved) => {
       if (saved && saved.bucket) {
         const cfg = { ...OSS_DEFAULTS, ...saved }
+        // Fix old cached paths
+        if (cfg.path === 'lz-learn-portal-data' || cfg.path === 'kbbsqllite-data') {
+          cfg.path = 'lz-learn-portal-sqllite-data'
+        }
         setOssCfg(cfg)
         setOssSaved(cfg)
       }

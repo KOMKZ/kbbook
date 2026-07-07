@@ -9,6 +9,7 @@ import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
 import Drawer from '@mui/material/Drawer'
+import Snackbar from '@mui/material/Snackbar'
 import Tooltip from '@mui/material/Tooltip'
 import HomeIcon from '@mui/icons-material/Home'
 import MenuIcon from '@mui/icons-material/Menu'
@@ -147,6 +148,9 @@ const DocsPage = () => {
       setSeriesShortTitle(s?.shortTitle || s?.title || seriesId)
     })
   }, [seriesId])
+
+  // 复制路径 toast
+  const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: '' })
 
   // TTS 朗读 — 提升到 DocsPage 层级共享
   const { state: speechState, progress: speechProgress, speak: speechSpeak, stop: speechStop } = useSpeech()
@@ -393,7 +397,9 @@ const DocsPage = () => {
                     const path = [siteConfig.name, seriesShortTitle, groupTitle, articleTitle]
                       .filter(Boolean)
                       .join(' › ')
-                    navigator.clipboard.writeText(path).catch(() => {})
+                    navigator.clipboard.writeText(path).then(() => {
+                      setToast({ open: true, message: path })
+                    }).catch(() => {})
                   }}>
                   <ContentCopyIcon fontSize="small" />
                 </IconButton>
@@ -679,6 +685,21 @@ const DocsPage = () => {
       </Box>
 
       {!fullscreen && <Footer />}
+
+      {/* Copy path toast */}
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3000}
+        onClose={() => setToast({ open: false, message: '' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={toast.message}
+        sx={{
+          '& .MuiSnackbarContent-root': {
+            maxWidth: 600,
+            fontSize: '0.82rem',
+          },
+        }}
+      />
     </Box>
   )
 }

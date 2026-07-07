@@ -167,9 +167,12 @@ const SettingsPanel = () => {
   }
 
   const fillOssDefaults = () => {
-    setOssCfg(cfg); setOssSaved(cfg); saveOssConfig(cfg); saveOssConfigNative(cfg).catch(() => {})
     const cfg = { ...OSS_DEFAULTS }
-    setToast({ message: '已填入默认值，请点击「保存配置」', severity: 'success' })
+    setOssCfg(cfg)
+    setOssSaved(cfg)
+    saveOssConfig(cfg)
+    saveOssConfigNative(cfg).catch(() => {})
+    setToast({ message: '已填入默认值并保存', severity: 'success' })
   }
 
   useEffect(() => {

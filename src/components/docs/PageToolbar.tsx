@@ -35,30 +35,26 @@ const PageToolbar = ({ extraButtons, seriesId }: Props) => {
   const navigate = useNavigate()
   const [historyOpen, setHistoryOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
-  const [autoHidden, setAutoHidden] = useState(false)
   const { items, removeEntry, clearAll } = useReadingHistory()
   const { toolbarSize: s } = useToolbarSizeCtx()
 
-  // Auto-hide after inactivity (default 10s, configurable in Settings)
+  // Auto-collapse after inactivity (default 10s, configurable in Settings)
+  // Timer resets on any toolbar button click. Scroll does NOT reset.
   const autoHideDelay = parseInt(localStorage.getItem('kbbook-toolbar-autohide') || '10', 10) * 1000
+  const autoHideRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const resetAutoHide = useCallback(() => {
+    if (autoHideDelay <= 0) return
+    if (autoHideRef.current) clearTimeout(autoHideRef.current)
+    setCollapsed(false)
+    autoHideRef.current = setTimeout(() => setCollapsed(true), autoHideDelay)
+  }, [autoHideDelay])
+
+  // Start timer on mount, clear on unmount
   useEffect(() => {
     if (autoHideDelay <= 0) return
-    let timer: ReturnType<typeof setTimeout>
-    const reset = () => {
-      setAutoHidden(false)
-      clearTimeout(timer)
-      timer = setTimeout(() => setAutoHidden(true), autoHideDelay)
-    }
-    reset()
-    window.addEventListener('scroll', reset, { passive: true })
-    window.addEventListener('mousemove', reset)
-    window.addEventListener('touchstart', reset, { passive: true })
-    return () => {
-      clearTimeout(timer)
-      window.removeEventListener('scroll', reset)
-      window.removeEventListener('mousemove', reset)
-      window.removeEventListener('touchstart', reset)
-    }
+    autoHideRef.current = setTimeout(() => setCollapsed(true), autoHideDelay)
+    return () => { if (autoHideRef.current) clearTimeout(autoHideRef.current) }
   }, [autoHideDelay])
 
   // Drag
@@ -107,13 +103,13 @@ const PageToolbar = ({ extraButtons, seriesId }: Props) => {
   const bottom = toolbarY != null ? 'auto' : { xs: 16, sm: 24 }
 
   return (
-    <Box sx={{ opacity: autoHidden ? 0 : 1, transition: 'opacity 0.5s', pointerEvents: autoHidden ? 'none' : 'auto' }}>
+    <>
       {/* Collapsed */}
       <Fade in={collapsed}>
         <Box sx={{ position: 'fixed', right: { xs: 8, sm: 16 }, top, bottom, zIndex: 1250, transform: `scale(${s})`, transformOrigin: 'right bottom' }}>
           <Paper elevation={4} sx={{ borderRadius: 3 }}>
             <Tooltip title="展开工具栏" placement="left">
-              <IconButton size="small" onClick={() => setCollapsed(false)}><UnfoldMoreIcon fontSize="small" /></IconButton>
+              <IconButton size="small" onClick={resetAutoHide}><UnfoldMoreIcon fontSize="small" /></IconButton>
             </Tooltip>
           </Paper>
         </Box>
@@ -168,7 +164,7 @@ const PageToolbar = ({ extraButtons, seriesId }: Props) => {
 
             {/* Collapse */}
             <Tooltip title="折叠" placement="left">
-              <IconButton size="small" onClick={() => setCollapsed(true)} sx={{ alignSelf: 'center' }}>
+              <IconButton size="small" onClick={() => { setCollapsed(true); if (autoHideRef.current) clearTimeout(autoHideRef.current) }} sx={{ alignSelf: 'center' }}>
                 <UnfoldLessIcon sx={{ fontSize: 14 }} />
               </IconButton>
             </Tooltip>
@@ -178,7 +174,7 @@ const PageToolbar = ({ extraButtons, seriesId }: Props) => {
 
       <ReadingHistoryDialog open={historyOpen} onClose={() => setHistoryOpen(false)}
         items={items} onRemove={removeEntry} onClearAll={clearAll} />
-    </Box>
+    </>
   )
 }
 

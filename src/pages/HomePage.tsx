@@ -71,8 +71,39 @@ const HomePage = () => {
   )
 
   const dragJustEndedRef = useRef(false)
+  const autoScrollRef = useRef<number | null>(null)
+
+  // Auto-scroll during drag when near viewport edges
+  const handleDragMove = useCallback((_event: any) => {
+    if (!('clientY' in (_event?.activatorEvent || {}))) return
+    const y = (_event as any).activatorEvent?.clientY
+    if (typeof y !== 'number') return
+    const EDGE = 80, SPEED = 8
+    const top = window.scrollY
+    if (y < EDGE) {
+      if (!autoScrollRef.current) {
+        autoScrollRef.current = window.setInterval(() => {
+          const newTop = Math.max(0, window.scrollY - SPEED)
+          if (window.scrollY === newTop) { if (autoScrollRef.current) clearInterval(autoScrollRef.current); autoScrollRef.current = null }
+          else window.scrollBy(0, -SPEED)
+        }, 16) as unknown as number
+      }
+    } else if (y > window.innerHeight - EDGE) {
+      if (!autoScrollRef.current) {
+        autoScrollRef.current = window.setInterval(() => {
+          const max = document.documentElement.scrollHeight - window.innerHeight
+          const newTop = Math.min(max, window.scrollY + SPEED)
+          if (window.scrollY === newTop) { if (autoScrollRef.current) clearInterval(autoScrollRef.current); autoScrollRef.current = null }
+          else window.scrollBy(0, SPEED)
+        }, 16) as unknown as number
+      }
+    } else {
+      if (autoScrollRef.current) { clearInterval(autoScrollRef.current); autoScrollRef.current = null }
+    }
+  }, [])
 
   const handleDragEnd = (event: DragEndEvent) => {
+    if (autoScrollRef.current) { clearInterval(autoScrollRef.current); autoScrollRef.current = null }
     const { active, over } = event
     if (over && active.id !== over.id) {
       const oldIndex = orderedIds.indexOf(active.id as string)
@@ -166,6 +197,7 @@ const HomePage = () => {
           <DndContext
             sensors={editMode ? sensors : []}
             collisionDetection={closestCenter}
+            onDragMove={handleDragMove}
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={orderedIds} strategy={rectSortingStrategy}>

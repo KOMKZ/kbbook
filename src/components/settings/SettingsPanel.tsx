@@ -409,6 +409,7 @@ const SettingsPanel = () => {
               <Box sx={{ '& .kv': { display: 'flex', justifyContent: 'space-between', py: 0.75, borderBottom: 1, borderColor: 'divider' } }}>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">构建时间</Typography><Typography variant="body2" fontWeight={600}>{typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev'}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">VersionCode</Typography><Typography variant="body2" fontWeight={600}>{typeof __VERSION_CODE__ !== 'undefined' ? __VERSION_CODE__ : 'dev'}</Typography></Box>
+                <Box className="kv"><Typography variant="body2" color="text.secondary">Git Hash</Typography><Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>{typeof __GIT_HASH__ !== 'undefined' ? __GIT_HASH__.slice(0,8) : 'unknown'}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">前端版本</Typography><Typography variant="body2" fontWeight={600}>{webVersion}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">App 版本</Typography><Typography variant="body2" fontWeight={600}>{appVersion}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">品牌</Typography><Typography variant="body2" fontWeight={600}>{siteConfig.name}</Typography></Box>
@@ -478,6 +479,16 @@ const SettingsPanel = () => {
           </List>
         )}
       </Box>
+
+      {/* Floating expand button when sidebar collapsed */}
+      {!sidebarOpen && (
+        <IconButton size="small" onClick={() => setSidebarOpen(true)}
+          sx={{ position: 'absolute', top: 8, left: 8, zIndex: 20,
+            bgcolor: 'background.paper', boxShadow: 2,
+            '&:hover': { bgcolor: 'action.hover' } }}>
+          <MenuIcon fontSize="small" />
+        </IconButton>
+      )}
 
       {/* ---- Right content — scrolls independently ---- */}
       <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>

@@ -12,6 +12,7 @@ export default defineConfig({
     __OSS_ACCESS_KEY_ID__: JSON.stringify(process.env.VITE_OSS_ACCESS_KEY_ID || ''),
     __OSS_ACCESS_KEY_SECRET__: JSON.stringify(process.env.VITE_OSS_ACCESS_KEY_SECRET || ''),
     __NETWORK_URL__: JSON.stringify(process.env.VITE_NETWORK_URL || 'http://localhost:3004'),
+    __GIT_HASH__: JSON.stringify(process.env.VITE_GIT_HASH || "unknown"),
   },
   plugins: [react()],
   resolve: {

@@ -353,7 +353,7 @@ export async function loadSeriesRegistry(): Promise<SeriesRegistry> {
           defaultSeries: all[0].id,
           series: all.map((s: any) => ({
             id: s.id, title: s.title, shortTitle: s.shortTitle, tagline: s.tagline,
-            description: s.description, version: '', language: 'zh-CN',
+            description: s.description, version: s.version || 'v0.1.0', language: s.language || 'zh-CN',
             color: s.color, icon: s.icon, enabled: s.enabled,
           })),
         }

@@ -231,7 +231,7 @@ export function getResolvedVersions(versions: VersionInfo[]): ResolvedVersionInf
  */
 export async function loadDocsMeta(version: string, lang?: LanguageCode, seriesId?: string): Promise<DocsMetaConfig> {
   const language = lang || getCurrentLanguage()
-  const cacheKey = `meta-${language}-${version}`
+  const cacheKey = `meta-${language}-${version}-${seriesId || 'noseries'}`
 
   if (metaCache.has(cacheKey)) {
     return metaCache.get(cacheKey)!
@@ -353,7 +353,9 @@ export async function loadSeriesRegistry(): Promise<SeriesRegistry> {
           defaultSeries: all[0].id,
           series: all.map((s: any) => ({
             id: s.id, title: s.title, shortTitle: s.shortTitle, tagline: s.tagline,
-            description: s.description, version: s.version || 'v0.1.0', language: s.language || 'zh-CN',
+            description: s.description,
+            version: s.version || s._version || 'v0.1.0',
+            language: s.language || s._language || 'zh-CN',
             color: s.color, icon: s.icon, enabled: s.enabled,
           })),
         }

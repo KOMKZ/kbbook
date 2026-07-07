@@ -1,7 +1,7 @@
 import type { IStorageDriver, BindValue } from '../driver/types.js'
 import type { Series, SeriesCreate, SeriesUpdate } from './types.js'
 
-const COLUMNS = 'id, title, short_title, tagline, description, icon, color, enabled, sort_order, created_at, updated_at'
+const COLUMNS = 'id, title, short_title, tagline, description, icon, color, version, language, enabled, sort_order, created_at, updated_at'
 
 function rowToSeries(r: Record<string, unknown>): Series {
   return {
@@ -12,6 +12,8 @@ function rowToSeries(r: Record<string, unknown>): Series {
     description: (r.description as string) ?? null,
     icon: (r.icon as string) ?? null,
     color: (r.color as string) ?? null,
+    version: (r.version as string) ?? null,
+    language: (r.language as string) ?? null,
     enabled: !!r.enabled,
     sortOrder: (r.sort_order as number) ?? 0,
     createdAt: r.created_at as number,

@@ -43,7 +43,7 @@ async function openDb(dbPath) {
   const db = new SQL.Database(data)
   // Bootstrap schema
   db.run(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, name TEXT, applied_at INTEGER)`)
-  db.run(`CREATE TABLE IF NOT EXISTS series (id TEXT PRIMARY KEY, title TEXT NOT NULL, short_title TEXT, tagline TEXT, description TEXT, icon TEXT, color TEXT, enabled INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
+  db.run(`CREATE TABLE IF NOT EXISTS series (id TEXT PRIMARY KEY, title TEXT NOT NULL, short_title TEXT, tagline TEXT, description TEXT, icon TEXT, color TEXT, version TEXT, language TEXT, enabled INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at INTEGER DEFAULT 0, updated_at INTEGER DEFAULT 0)`)
   db.run(`CREATE TABLE IF NOT EXISTS groups (id TEXT PRIMARY KEY, series_id TEXT NOT NULL REFERENCES series(id), parent_group_id TEXT REFERENCES groups(id), title TEXT NOT NULL, slug TEXT NOT NULL, sort_order INTEGER DEFAULT 0, UNIQUE(series_id, slug))`)
   db.run(`CREATE TABLE IF NOT EXISTS articles (slug TEXT PRIMARY KEY, series_id TEXT NOT NULL REFERENCES series(id), group_id TEXT REFERENCES groups(id), title TEXT NOT NULL, description TEXT, content TEXT, word_count INTEGER DEFAULT 0, read_time_mins INTEGER DEFAULT 0, status TEXT DEFAULT 'published', tags TEXT, frontmatter TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
   db.run(`CREATE TABLE IF NOT EXISTS article_links (id INTEGER PRIMARY KEY AUTOINCREMENT, source_slug TEXT NOT NULL, target_slug TEXT NOT NULL, link_type TEXT DEFAULT 'reference', context TEXT, UNIQUE(source_slug, target_slug, link_type))`)
@@ -351,10 +351,16 @@ async function cmdBuildInit(args, dbPath) {
   for (const s of seriesList) {
     if (!s.enabled) continue
     seriesCount++
-    db.run(`INSERT OR REPLACE INTO series (id, title, short_title, tagline, description, icon, color, enabled, sort_order, created_at, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    // Add version/language columns if not exist (ignore error if already present)
+    for (const sql of [
+      'ALTER TABLE series ADD COLUMN version TEXT',
+      'ALTER TABLE series ADD COLUMN language TEXT',
+    ]) { try { db.run(sql) } catch {} }
+    db.run(`INSERT OR REPLACE INTO series (id, title, short_title, tagline, description, icon, color, enabled, sort_order, version, language, created_at, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [s.id, s.title, s.shortTitle || null, s.tagline || null, s.description || null,
-       s.icon || null, s.color || null, s.enabled ? 1 : 0, seriesCount - 1, now, now])
+       s.icon || null, s.color || null, s.enabled ? 1 : 0, seriesCount - 1,
+       s.version || null, s.language || null, now, now])
 
     // 2. Load _meta.json for this series
     const lang = s.language || 'zh-CN'

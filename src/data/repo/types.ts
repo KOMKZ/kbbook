@@ -11,6 +11,8 @@ export interface Series {
   description?: string | null
   icon?: string | null
   color?: string | null
+  version?: string | null
+  language?: string | null
   enabled: boolean
   sortOrder: number
   createdAt: number

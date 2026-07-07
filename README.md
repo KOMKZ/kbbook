@@ -94,6 +94,20 @@ bash scripts/check.sh
 
 Verifies: environment → dependencies → content → build → security scan. Run once after clone.
 
+## 📲 Build Android APK
+
+```bash
+# Step 1: Check your machine is ready
+bash scripts/check.sh --apk
+
+# Step 2: Build + install to tablet
+make verify-app
+```
+
+**What `make verify-app` does**: clean build → Capacitor sync → fix package name → bump version code → Gradle assemble → verify APK content → adb install → launch & verify.
+
+**Prerequisites**: Java JDK 11+, Android SDK (`ANDROID_HOME`), adb. Run `bash scripts/check.sh --apk` to verify.
+
 ## &#x1F4E6; Your content, your way
 
 ```text

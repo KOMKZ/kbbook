@@ -92,7 +92,21 @@ make upload-to-oss
 bash scripts/check.sh
 ```
 
-&#x68C0;&#x67E5;&#xFF1A;&#x73AF;&#x5883; &#x2192; &#x4F9D;&#x8D56; &#x2192; &#x5185;&#x5BB9; &#x2192; &#x6784;&#x5EFA; &#x2192; &#x5B89;&#x5168;&#x626B;&#x63CF;&#x3002;clone &#x540E;&#x8DD1;&#x4E00;&#x6B21;&#x5C31;&#x77E5;&#x9053;&#x7F3A;&#x4EC0;&#x4E48;&#x3002;
+检查：环境 → 依赖 → 内容 → 构建 → 安全扫描。clone 后跑一次就知道缺什么。
+
+## 📲 构建 Android APK
+
+```bash
+# 第一步：检查机器环境
+bash scripts/check.sh --apk
+
+# 第二步：构建 + 安装到平板
+make verify-app
+```
+
+**`make verify-app` 做了什么**：清理构建 → Capacitor 同步 → 修复包名 → 自动升版本号 → Gradle 编译 → 验证 APK 内容 → adb 安装 → 启动验证。
+
+**前置条件**：Java JDK 11+、Android SDK（设置 `ANDROID_HOME`）、adb。先跑 `bash scripts/check.sh --apk` 验证。
 
 ## &#x1F4E6; &#x4F60;&#x53EA;&#x9700;&#x5173;&#x6CE8;&#x8FD9;&#x4E2A;&#x76EE;&#x5F55;
 

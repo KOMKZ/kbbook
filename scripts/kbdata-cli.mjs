@@ -402,7 +402,7 @@ async function cmdBuildInit(args, dbPath) {
     'kbbook-oss-config': JSON.stringify({
       endpoint: 'https://oss-cn-shenzhen.aliyuncs.com',
       bucket: 'yogan-static',
-      path: 'kbbsqllite-data',
+      path: 'lz-learn-portal-sqllite-data',
       accessKeyId: '',
       accessKeySecret: '',
     }),

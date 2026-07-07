@@ -54,6 +54,8 @@ declare const __OSS_BUCKET__: string
 declare const __OSS_PATH__: string
 declare const __OSS_ACCESS_KEY_ID__: string
 declare const __OSS_ACCESS_KEY_SECRET__: string
+declare const __NETWORK_URL__: string
+declare const __GIT_HASH__: string
 
 // ============================================================
 // Section — reusable card

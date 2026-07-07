@@ -165,21 +165,14 @@ help-app:
 help:
 	@echo "KBBook commands"
 	@echo ""
-	@echo "  make install        Install dependencies"
-	@echo "  make dev            Start Vite in foreground on $(BASE_URL)"
-	@echo "  make dev-bg         Start Vite as a LaunchAgent on $(BASE_URL)"
-	@echo "  make stop           Stop LaunchAgent, saved PID, and ports 3004/3005"
-	@echo "  make restart        Stop, clean Vite cache, start LaunchAgent server"
-	@echo "  make build          TypeScript + Vite production build"
-	@echo "  make lint           Run ESLint"
-	@echo "  make search         Build search index JSON"
-	@echo "  make verify-md DOC=/docs/.../file.md"
-	@echo "  make status         Show listeners on 3004/3005"
-	@echo ""
-	@echo "App (平板) commands — see also make help-app"
-	@echo "  make build-apk      构建 Android APK"
-	@echo "  make install-app    安装 APK 到平板"
-	@echo "  make upload-to-oss  推送文档到阿里云 OSS"
+	@echo "  make install          Install dependencies"
+	@echo "  make dev              Start Vite in foreground on $(BASE_URL)"
+	@echo "  make build            TypeScript + Vite production build"
+	@echo "  make lint             Run ESLint"
+	@echo "  make check-sensitive  Scan for credentials/tokens/passwords before push"
+	@echo "  make push MSG='...'   git add -A, commit, push to origin"
+	@echo "  make search           Build search index JSON"
+	@echo "  make status           Show listeners on 3004/3005"
 
 install:
 	pnpm install
@@ -221,4 +214,29 @@ stop:
 	@kill $$(lsof -ti :3004) 2>/dev/null || true
 	@kill $$(lsof -ti :3005) 2>/dev/null || true
 	@echo "✅ Stopped (if running)"
+
+# ---- Quality Gates ----
+
+# Scan for sensitive data before pushing to public repo
+check-sensitive:
+	@echo "🔍 Scanning for sensitive information..."
+	@errors=0; \
+	for pattern in 'LTAI[0-9A-Za-z]{,20}' 'FA46Zk' 'password\s*[:=]\s*"[^"]+"' '192\.168\.\d{1,3}\.\d{1,3}' 'yogan-static'; do \
+	  if grep -rn "$$pattern" src/ scripts/ --include='*.ts' --include='*.tsx' --include='*.mjs' --include='*.py' 2>/dev/null | grep -v node_modules | grep -v '.git/'; then \
+	    echo "  ❌ Found: $$pattern"; errors=$$((errors+1)); \
+	  fi; \
+	done; \
+	if grep -rn 'LZ Lab\|lzlab\|LLM LZ' src/ --include='*.ts' --include='*.tsx' 2>/dev/null | grep -v 'site\.ts' | grep -v node_modules; then \
+	  echo "  ❌ Brand in source (not site.ts)"; errors=$$((errors+1)); \
+	fi; \
+	if [ $$errors -eq 0 ]; then echo "✅ Clean — safe to push"; else echo "❌ $$errors issue(s) found — fix before push"; exit 1; fi
+
+# Git: add, commit, push
+push:
+ifndef MSG
+	$(error Usage: make push MSG='commit message')
+endif
+	git add -A
+	git commit -m "$(MSG)"
+	git push origin main
 

@@ -303,7 +303,7 @@ const SettingsPanel = () => {
   )
 
   return (
-    <Box sx={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', height: '100%', overflow: 'hidden', pt: 'var(--header-height, 64px)', boxSizing: 'border-box' }}>
       {/* ---- Left sidebar — FIXED, independent scroll ---- */}
       <Box sx={{
         width: SIDEBAR_WIDTH, flexShrink: 0,

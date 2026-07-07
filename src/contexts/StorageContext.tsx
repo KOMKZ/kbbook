@@ -1,11 +1,8 @@
 /**
  * StorageContext — global data-layer provider.
  *
- * Initialises the IStorageDriver on app startup, runs migrations,
- * and exposes repos + backup manager via React context.
- *
- * Driver selection: reads 'kbbook-storage-driver' from localStorage
- * (defaults to 'localstorage'). User can switch via Settings.
+ * Initialises sql.js WASM driver on startup, runs migrations,
+ * and loads initial data from bundled .kbdata file if DB is empty.
  */
 
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react'
@@ -21,38 +18,7 @@ import {
   AuditLogRepo, PreferencesRepo,
 } from '@/data/index.js'
 import type { IStorageDriver } from '@/data/driver/types.js'
-import { MetaSyncService } from '@/data/sync/metasync.js'
-import type { SeriesJsonFile, MetaJsonFile } from '@/data/sync/metasync.js'
 import { debugLog } from '@/data/debug.js'
-
-/** First-launch: if DB is empty, sync from bundled JSON files. */
-async function initFromFiles(d: IStorageDriver) {
-  const cnt = await d.query<{c:number}>('SELECT COUNT(*) as c FROM articles')
-  if (cnt[0]?.c && cnt[0].c > 0) return // already has data
-  debugLog.info('storage', '空数据库，从文件初始化...')
-  try {
-    const sync = new MetaSyncService(d)
-    const seriesResp = await fetch('/docs/series.json')
-    if (!seriesResp.ok) { debugLog.warn('sync', 'series.json not found'); return }
-    const seriesFile: SeriesJsonFile = await seriesResp.json()
-    const sr = await sync.syncSeries(seriesFile)
-    debugLog.info('storage', `series synced: ${sr.series}`)
-    for (const s of seriesFile.series) {
-      if (!s.enabled) continue
-      const lang = (s as any).language || 'zh-CN'
-      const version = (s as any).version || 'v0.1.0'
-      try {
-        const metaResp = await fetch(`/docs/${lang}/${version}/_meta.json`)
-        if (!metaResp.ok) continue
-        const metaFile: MetaJsonFile = await metaResp.json()
-        const mr = await sync.syncMeta(s.id, metaFile)
-        debugLog.info('storage', `${s.id}: ${mr.groups} groups, ${mr.articles} articles`)
-      } catch { /* skip broken */ }
-    }
-  } catch (e) {
-    debugLog.error('storage', '文件初始化失败', { error: (e as Error).message })
-  }
-}
 
 interface StorageState {
   driver: IStorageDriver | null
@@ -61,68 +27,94 @@ interface StorageState {
 }
 
 interface Repos {
-  series: SeriesRepo
-  group: GroupRepo
-  article: ArticleRepo
-  link: ArticleLinkRepo
-  stats: StatsRepo
-  readingHistory: ReadingHistoryRepo
-  readingPosition: ReadingPositionRepo
-  audit: AuditLogRepo
-  preferences: PreferencesRepo
-  backup: BackupManager
+  series: SeriesRepo; group: GroupRepo; article: ArticleRepo
+  link: ArticleLinkRepo; stats: StatsRepo
+  readingHistory: ReadingHistoryRepo; readingPosition: ReadingPositionRepo
+  audit: AuditLogRepo; preferences: PreferencesRepo; backup: BackupManager
 }
 
 const StorageCtx = createContext<StorageState & { repos: Repos | null }>({
   driver: null, ready: false, error: null, repos: null,
 })
 
-export function useStorage() {
-  return useContext(StorageCtx)
-}
+export function useStorage() { return useContext(StorageCtx) }
 
-/** Convenience hook — returns only the repos (throws if not ready). */
 export function useRepos(): Repos {
   const ctx = useContext(StorageCtx)
-  if (!ctx.ready || !ctx.repos) throw new Error('Storage not ready — wrap app in <StorageProvider>')
+  if (!ctx.ready || !ctx.repos) throw new Error('Storage not ready')
   return ctx.repos
 }
 
+/** Load initial data from bundled .kbdata binary if DB is empty. */
+async function loadInitialData(d: IStorageDriver) {
+  const cnt = await d.query<{c:number}>('SELECT COUNT(*) as c FROM articles')
+  if (cnt[0]?.c && cnt[0].c > 0) return
+  debugLog.info('storage', '空数据库，加载初始数据 /kbbsqllite-init.kbdata')
+
+  const resp = await fetch('/kbbsqllite-init.kbdata')
+  if (!resp.ok) {
+    debugLog.warn('storage', `.kbdata fetch failed: ${resp.status}`)
+    return
+  }
+
+  const buf = await resp.arrayBuffer()
+  const SQL = (await import('sql.js')).default
+  const initSql = await SQL()
+  const tempDb = new initSql.Database(new Uint8Array(buf))
+
+  // Export all user tables from temp DB
+  const tableList = tempDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+  for (const { values } of tableList) {
+    for (const [tname] of values) {
+      const name = tname as string
+      if (!name || name === 'sqlite_sequence') continue
+      try {
+        const data = tempDb.exec(`SELECT * FROM "${name}"`)
+        if (!data.length || !data[0].values.length) continue
+        const cols = data[0].columns
+        const rows = data[0].values
+        for (const row of rows) {
+          const vals: any[] = []
+          for (let i = 0; i < cols.length; i++) vals.push(row[i])
+          const ph = vals.map(() => '?').join(',')
+          await d.exec(
+            `INSERT OR IGNORE INTO "${name}" (${cols.map(c => `"${c}"`).join(',')}) VALUES (${ph})`,
+            vals,
+          )
+        }
+      } catch {}
+    }
+  }
+  tempDb.close()
+  debugLog.info('storage', '初始数据加载完成')
+}
+
 export function StorageProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<StorageState>({
-    driver: null, ready: false, error: null,
-  })
+  const [state, setState] = useState<StorageState>({ driver: null, ready: false, error: null })
 
   useEffect(() => {
     let cancelled = false
-
     async function init() {
       try {
-        debugLog.info('storage', '初始化 SQLite 驱动')
+        debugLog.info('storage', '初始化 SQLite')
         const d = createDriver('sqljs')
         await d.open()
-        debugLog.info('storage', 'sqljs 已打开', { persistent: (d as any).persistent })
 
         const runner = new MigrationRunner(d, allMigrations)
         const prevVersion = await runner.currentVersion()
         const newVersion = await runner.run()
         debugLog.info('migration', `schema ${prevVersion} → ${newVersion}`)
 
-        // First launch: if DB is empty, sync from bundled JSON files
-        await initFromFiles(d)
+        await loadInitialData(d)
 
         if (cancelled) { await d.close(); return }
-
-        debugLog.info('storage', '初始化完成', { schemaVersion: newVersion })
+        debugLog.info('storage', '初始化完成')
         setState({ driver: d, ready: true, error: null })
       } catch (err) {
-        debugLog.error('storage', '初始化失败', { error: err instanceof Error ? err.message : String(err) })
-        if (!cancelled) {
-          setState({ driver: null, ready: false, error: err instanceof Error ? err.message : 'Storage init failed' })
-        }
+        debugLog.error('storage', '初始化失败', { error: (err as Error).message })
+        if (!cancelled) setState({ driver: null, ready: false, error: (err as Error).message })
       }
     }
-
     init()
     return () => { cancelled = true }
   }, [])
@@ -131,30 +123,18 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     if (!state.driver || !state.ready) return null
     const d = state.driver
     const r = {
-      series: new SeriesRepo(d),
-      group: new GroupRepo(d),
-      article: new ArticleRepo(d),
-      link: new ArticleLinkRepo(d),
-      stats: new StatsRepo(d),
-      readingHistory: new ReadingHistoryRepo(d),
-      readingPosition: new ReadingPositionRepo(d),
-      audit: new AuditLogRepo(d),
-      preferences: new PreferencesRepo(d),
-      backup: new BackupManager(),
+      series: new SeriesRepo(d), group: new GroupRepo(d), article: new ArticleRepo(d),
+      link: new ArticleLinkRepo(d), stats: new StatsRepo(d),
+      readingHistory: new ReadingHistoryRepo(d), readingPosition: new ReadingPositionRepo(d),
+      audit: new AuditLogRepo(d), preferences: new PreferencesRepo(d), backup: new BackupManager(),
     }
-    // Register bridge for non-React consumers (usePersistentState, OSS sync, etc.)
     setStorageBridge(r.preferences, state.driver!)
     return r
   }, [state.driver, state.ready])
 
-  // Block rendering until storage is ready
   if (!state.ready && !state.error) {
     return <StorageCtx.Provider value={{ ...state, repos }}>{null}</StorageCtx.Provider>
   }
 
-  return (
-    <StorageCtx.Provider value={{ ...state, repos }}>
-      {children}
-    </StorageCtx.Provider>
-  )
+  return <StorageCtx.Provider value={{ ...state, repos }}>{children}</StorageCtx.Provider>
 }

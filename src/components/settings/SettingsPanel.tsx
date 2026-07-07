@@ -45,6 +45,12 @@ import { listenSyncProgress, checkWebUpdate, getWebVersion, type SyncProgress } 
 import { siteConfig } from '../../config/site'
 
 declare const __BUILD_TIME__: string
+declare const __VERSION_CODE__: string
+declare const __OSS_ENDPOINT__: string
+declare const __OSS_BUCKET__: string
+declare const __OSS_PATH__: string
+declare const __OSS_ACCESS_KEY_ID__: string
+declare const __OSS_ACCESS_KEY_SECRET__: string
 
 // ============================================================
 // Section — reusable card
@@ -108,11 +114,11 @@ const SIDEBAR_WIDTH = 180
 // ============================================================
 
 const OSS_DEFAULTS = {
-  endpoint: 'https://oss-cn-shenzhen.aliyuncs.com',
-  bucket: 'yogan-static',
-  path: 'lz-learn-portal-data',
-  accessKeyId: '',
-  accessKeySecret: '',
+  endpoint: (typeof __OSS_ENDPOINT__ !== 'undefined' && __OSS_ENDPOINT__) || 'https://oss-cn-shenzhen.aliyuncs.com',
+  bucket: (typeof __OSS_BUCKET__ !== 'undefined' && __OSS_BUCKET__) || 'yogan-static',
+  path: (typeof __OSS_PATH__ !== 'undefined' && __OSS_PATH__) || 'lz-learn-portal-data',
+  accessKeyId: (typeof __OSS_ACCESS_KEY_ID__ !== 'undefined' && __OSS_ACCESS_KEY_ID__) || '',
+  accessKeySecret: (typeof __OSS_ACCESS_KEY_SECRET__ !== 'undefined' && __OSS_ACCESS_KEY_SECRET__) || '',
 }
 
 function loadOssConfig(): typeof OSS_DEFAULTS {
@@ -357,6 +363,7 @@ const SettingsPanel = () => {
               icon={<InfoIcon color="primary" />}>
               <Box sx={{ '& .kv': { display: 'flex', justifyContent: 'space-between', py: 0.75, borderBottom: 1, borderColor: 'divider' } }}>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">构建时间</Typography><Typography variant="body2" fontWeight={600}>{typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev'}</Typography></Box>
+                <Box className="kv"><Typography variant="body2" color="text.secondary">VersionCode</Typography><Typography variant="body2" fontWeight={600}>{typeof __VERSION_CODE__ !== 'undefined' ? __VERSION_CODE__ : 'dev'}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">前端版本</Typography><Typography variant="body2" fontWeight={600}>{webVersion}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">App 版本</Typography><Typography variant="body2" fontWeight={600}>{appVersion}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">品牌</Typography><Typography variant="body2" fontWeight={600}>{siteConfig.name}</Typography></Box>

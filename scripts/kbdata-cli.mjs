@@ -319,6 +319,20 @@ async function cmdUploadOss(dbPath) {
   console.log(JSON.stringify({ ok: true, key, size: body.length }))
 }
 
+// ── Validation ─────────────────────────────────────────────────────────────
+
+const VALID_SLUG = /^[a-zA-Z0-9][-a-zA-Z0-9_./]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$/
+const VALID_ID = /^[a-zA-Z0-9][-a-zA-Z0-9_]*$/
+const VALID_STATUS = /^(draft|published|archived)$/
+const VALID_LINK_TYPE = /^(reference|prerequisite|extends|related)$/
+
+function fail(msg) { console.error(JSON.stringify({ ok: false, error: msg })); process.exit(1) }
+function ok(data) { console.log(JSON.stringify({ ok: true, ...data })) }
+function vSlug(v, name) { if (!v || !VALID_SLUG.test(v)) fail(`${name} must match ${VALID_SLUG}`) }
+function vId(v, name) { if (!v || !VALID_ID.test(v)) fail(`${name} must match ${VALID_ID}`) }
+function vStatus(v) { if (v && !VALID_STATUS.test(v)) fail(`status must be draft|published|archived`) }
+function vLinkType(v) { if (v && !VALID_LINK_TYPE.test(v)) fail(`type must be reference|prerequisite|extends|related`) }
+
 // ── Convenience commands ──────────────────────────────────────────────────
 
 function parseOpts(args) {
@@ -334,19 +348,62 @@ function parseOpts(args) {
   return opts
 }
 
+/** Execute parameterized SQL, auto-open and save the DB. */
+async function dbExec(dbPath, sql, params = []) {
+  const { db } = await openDb(dbPath)
+  try {
+    db.run(sql, params)
+    const changes = db.exec('SELECT changes() as c')[0]?.values[0][0] ?? 0
+    const lastId = db.exec('SELECT last_insert_rowid() as id')[0]?.values[0][0]
+    await saveDb(dbPath, db)
+    db.close()
+    return { changes, lastInsertRowid: lastId ?? null }
+  } catch (err) {
+    db.close()
+    fail(err.message)
+  }
+}
+
+async function dbQuery(dbPath, sql, params = []) {
+  const { db } = await openDb(dbPath)
+  try {
+    const results = db.exec(sql, params)
+    const rows = []
+    if (results.length) {
+      for (const { columns, values } of results) {
+        for (const vals of values) {
+          const r = {}
+          columns.forEach((c, i) => r[c] = vals[i])
+          rows.push(r)
+        }
+      }
+    }
+    db.close()
+    return rows
+  } catch (err) {
+    db.close()
+    fail(err.message)
+  }
+}
+
 async function cmdSeries(args, dbPath) {
   const sub = args[1]
   if (sub === 'list') {
-    return cmdQuery(dbPath, 'SELECT id, title, short_title, enabled FROM series ORDER BY sort_order')
+    const rows = await dbQuery(dbPath, 'SELECT id, title, short_title, icon, enabled FROM series ORDER BY sort_order')
+    return ok({ series: rows })
   }
   if (sub === 'add') {
     const id = args[2], title = args[3]
-    if (!id || !title) { console.error(JSON.stringify({ error: 'usage: series add <id> <title> [--short ...] [--icon ...]' })); process.exit(1) }
+    if (!id || !title) fail('usage: series add <id> <title> [--short ...] [--icon ...]')
+    vId(id, 'series id')
     const opts = parseOpts(args.slice(4))
     const now = Date.now()
-    return cmdExec(dbPath, `INSERT OR REPLACE INTO series (id, title, short_title, icon, enabled, created_at, updated_at) VALUES ('${id}','${title}','${opts.short || ''}','${opts.icon || ''}',1,${now},${now})`)
+    await dbExec(dbPath,
+      'INSERT OR REPLACE INTO series (id, title, short_title, icon, enabled, created_at, updated_at) VALUES (?,?,?,?,1,?,?)',
+      [id, title, opts.short || '', opts.icon || '', now, now])
+    return ok({ series: id })
   }
-  console.error(JSON.stringify({ error: `unknown series subcommand: ${sub}` })); process.exit(1)
+  fail(`unknown series subcommand: ${sub}`)
 }
 
 async function cmdArticle(args, dbPath) {
@@ -354,67 +411,103 @@ async function cmdArticle(args, dbPath) {
   const opts = parseOpts(args.slice(2))
 
   if (sub === 'list') {
-    const sid = opts.series || ''
-    if (!sid) { console.error(JSON.stringify({ error: '--series <id> required' })); process.exit(1) }
-    return cmdQuery(dbPath, `SELECT slug, title, group_id, status, word_count, updated_at FROM articles WHERE series_id='${sid}' ORDER BY updated_at DESC`)
+    const sid = opts.series
+    if (!sid) fail('--series <id> required')
+    vId(sid, 'series')
+    const rows = await dbQuery(dbPath,
+      'SELECT slug, title, group_id, status, word_count, updated_at FROM articles WHERE series_id=? ORDER BY updated_at DESC',
+      [sid])
+    return ok({ articles: rows })
   }
   if (sub === 'add') {
     const slug = args[2], title = args[3]
-    if (!slug || !title) { console.error(JSON.stringify({ error: 'usage: article add <slug> <title> --series <id>' })); process.exit(1) }
-    if (!opts.series) { console.error(JSON.stringify({ error: '--series <id> required' })); process.exit(1) }
+    if (!slug || !title) fail('usage: article add <slug> <title> --series <id>')
+    if (!opts.series) fail('--series <id> required')
+    vSlug(slug, 'slug'); vId(opts.series, 'series'); vStatus(opts.status)
+    if (opts.group) vSlug(opts.group, 'group')
     const now = Date.now()
-    const gid = opts.group ? `${opts.series}:${opts.group}` : 'null'
-    // Ensure series exists first
-    await cmdExec(dbPath, `INSERT OR IGNORE INTO series (id, title, created_at, updated_at) VALUES ('${opts.series}','${opts.series}',${now},${now})`)
-    if (opts.group) {
-      await cmdExec(dbPath, `INSERT OR IGNORE INTO groups (id, series_id, title, slug, sort_order) VALUES ('${gid}','${opts.series}','${opts.group}','${opts.group}',0)`)
+    const gid = opts.group ? `${opts.series}:${opts.group}` : null
+
+    // Ensure series exists
+    await dbExec(dbPath, 'INSERT OR IGNORE INTO series (id, title, created_at, updated_at) VALUES (?,?,?,?)', [opts.series, opts.series, now, now])
+    if (gid) {
+      await dbExec(dbPath, 'INSERT OR IGNORE INTO groups (id, series_id, title, slug, sort_order) VALUES (?,?,?,?,0)', [gid, opts.series, opts.group, opts.group])
     }
-    return cmdExec(dbPath, `INSERT OR REPLACE INTO articles (slug, series_id, group_id, title, content, tags, status, created_at, updated_at) VALUES ('${slug}','${opts.series}',${gid === 'null' ? 'NULL' : `'${gid}'`},'${title}','${opts.content || ''}','${opts.tags || ''}','${opts.status || 'published'}',${now},${now})`)
+    await dbExec(dbPath,
+      'INSERT OR REPLACE INTO articles (slug, series_id, group_id, title, content, tags, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
+      [slug, opts.series, gid, title, opts.content || '', opts.tags || '', opts.status || 'published', now, now])
+    return ok({ slug })
   }
   if (sub === 'update') {
     const slug = args[2]
-    if (!slug) { console.error(JSON.stringify({ error: 'usage: article update <slug> --title "..."' })); process.exit(1) }
-    const sets = []
+    if (!slug) fail('usage: article update <slug> --title "..."')
+    vSlug(slug, 'slug'); vStatus(opts.status)
     const now = Date.now()
-    if (opts.title) sets.push(`title='${opts.title}'`)
-    if (opts.content) sets.push(`content='${opts.content}'`)
-    if (opts.status) sets.push(`status='${opts.status}'`)
-    if (opts.tags) sets.push(`tags='${opts.tags}'`)
-    if (opts.group) sets.push(`group_id='${opts.group}'`)
-    if (!sets.length) { console.error(JSON.stringify({ error: 'no fields to update' })); process.exit(1) }
-    sets.push(`updated_at=${now}`)
-    return cmdExec(dbPath, `UPDATE articles SET ${sets.join(', ')} WHERE slug='${slug}'`)
+    const sets = [], params = []
+    if (opts.title) { sets.push('title=?'); params.push(opts.title) }
+    if (opts.content) { sets.push('content=?'); params.push(opts.content) }
+    if (opts.status) { sets.push('status=?'); params.push(opts.status) }
+    if (opts.tags) { sets.push('tags=?'); params.push(opts.tags) }
+    if (opts.group) { sets.push('group_id=?'); params.push(opts.group) }
+    if (!sets.length) fail('no fields to update')
+    sets.push('updated_at=?'); params.push(now)
+    params.push(slug)
+    await dbExec(dbPath, `UPDATE articles SET ${sets.join(',')} WHERE slug=?`, params)
+    return ok({ slug })
   }
   if (sub === 'delete') {
     const slug = args[2]
-    if (!slug) { console.error(JSON.stringify({ error: 'usage: article delete <slug>' })); process.exit(1) }
-    return cmdExec(dbPath, `DELETE FROM articles WHERE slug='${slug}'`)
+    if (!slug) fail('usage: article delete <slug>')
+    vSlug(slug, 'slug')
+    await dbExec(dbPath, 'DELETE FROM articles WHERE slug=?', [slug])
+    return ok({ slug })
   }
-  console.error(JSON.stringify({ error: `unknown article subcommand: ${sub}` })); process.exit(1)
+  fail(`unknown article subcommand: ${sub}`)
 }
 
 async function cmdLink(args, dbPath) {
   const sub = args[1]
   if (sub === 'add') {
     const source = args[2], target = args[3]
-    if (!source || !target) { console.error(JSON.stringify({ error: 'usage: link add <sourceSlug> <targetSlug> [--type reference]' })); process.exit(1) }
+    if (!source || !target) fail('usage: link add <sourceSlug> <targetSlug> [--type reference]')
+    vSlug(source, 'source'); vSlug(target, 'target')
     const opts = parseOpts(args.slice(4))
-    return cmdExec(dbPath, `INSERT OR IGNORE INTO article_links (source_slug, target_slug, link_type) VALUES ('${source}','${target}','${opts.type || 'reference'}')`)
+    vLinkType(opts.type)
+    await dbExec(dbPath,
+      'INSERT OR IGNORE INTO article_links (source_slug, target_slug, link_type) VALUES (?,?,?)',
+      [source, target, opts.type || 'reference'])
+    return ok({ source, target })
   }
   if (sub === 'list') {
     const slug = args[2]
-    if (!slug) { console.error(JSON.stringify({ error: 'usage: link list <slug>' })); process.exit(1) }
-    return cmdQuery(dbPath, `SELECT 'outgoing' as direction, target_slug as slug, link_type FROM article_links WHERE source_slug='${slug}' UNION ALL SELECT 'incoming' as direction, source_slug as slug, link_type FROM article_links WHERE target_slug='${slug}'`)
+    if (!slug) fail('usage: link list <slug>')
+    vSlug(slug, 'slug')
+    const rows = await dbQuery(dbPath,
+      `SELECT 'outgoing' as direction, target_slug as slug, link_type FROM article_links WHERE source_slug=?
+       UNION ALL SELECT 'incoming' as direction, source_slug as slug, link_type FROM article_links WHERE target_slug=?`,
+      [slug, slug])
+    return ok({ links: rows })
   }
-  console.error(JSON.stringify({ error: `unknown link subcommand: ${sub}` })); process.exit(1)
+  fail(`unknown link subcommand: ${sub}`)
 }
 
 async function cmdStats(args, dbPath) {
   const opts = parseOpts(args)
   if (opts.series) {
-    return cmdQuery(dbPath, `SELECT (SELECT COUNT(*) FROM articles WHERE series_id='${opts.series}') as article_count, (SELECT COUNT(*) FROM articles WHERE series_id='${opts.series}' AND status='published') as published_count, (SELECT COUNT(*) FROM articles WHERE series_id='${opts.series}' AND status='draft') as draft_count, COALESCE((SELECT SUM(word_count) FROM articles WHERE series_id='${opts.series}'),0) as total_words`)
+    vId(opts.series, 'series')
+    const rows = await dbQuery(dbPath,
+      `SELECT COUNT(*) as article_count,
+        SUM(CASE WHEN status='published' THEN 1 ELSE 0 END) as published_count,
+        SUM(CASE WHEN status='draft' THEN 1 ELSE 0 END) as draft_count,
+        COALESCE(SUM(word_count),0) as total_words
+      FROM articles WHERE series_id=?`, [opts.series])
+    return ok(rows[0])
   }
-  return cmdQuery(dbPath, `SELECT (SELECT COUNT(*) FROM series) as series_count, (SELECT COUNT(*) FROM articles) as article_count, (SELECT COUNT(*) FROM article_links) as link_count`)
+  const rows = await dbQuery(dbPath,
+    `SELECT (SELECT COUNT(*) FROM series) as series_count,
+      (SELECT COUNT(*) FROM articles) as article_count,
+      (SELECT COUNT(*) FROM article_links) as link_count`)
+  return ok(rows[0])
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────

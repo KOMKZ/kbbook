@@ -79,7 +79,6 @@ const HomePage = () => {
     const y = (_event as any).activatorEvent?.clientY
     if (typeof y !== 'number') return
     const EDGE = 80, SPEED = 8
-    const top = window.scrollY
     if (y < EDGE) {
       if (!autoScrollRef.current) {
         autoScrollRef.current = window.setInterval(() => {

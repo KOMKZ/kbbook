@@ -554,6 +554,19 @@ async function cmdArticle(args, dbPath) {
     await dbExec(dbPath, 'DELETE FROM articles WHERE slug=?', [slug])
     return ok({ slug })
   }
+  if (sub === 'touch') {
+    const slug = args[2]
+    if (!slug) fail('usage: article touch <slug> [--word-count <n>]')
+    vSlug(slug, 'slug')
+    const now = Date.now()
+    if (opts['word-count']) {
+      await dbExec(dbPath, 'UPDATE articles SET updated_at=?, word_count=?, read_time_mins=? WHERE slug=?',
+        [now, parseInt(opts['word-count']), Math.max(1, Math.round(parseInt(opts['word-count']) / 400)), slug])
+    } else {
+      await dbExec(dbPath, 'UPDATE articles SET updated_at=? WHERE slug=?', [now, slug])
+    }
+    return ok({ slug, updatedAt: now })
+  }
   fail(`unknown article subcommand: ${sub}`)
 }
 

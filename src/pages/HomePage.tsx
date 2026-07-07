@@ -66,8 +66,8 @@ const HomePage = () => {
   const orderedIds = useMemo(() => orderedSeries.map((s) => s.id), [orderedSeries])
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 15 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 300, tolerance: 15 } }),
   )
 
   const dragJustEndedRef = useRef(false)

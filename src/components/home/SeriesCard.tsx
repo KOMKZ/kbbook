@@ -5,7 +5,6 @@ import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Chip from '@mui/material/Chip'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
-import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import { useTheme } from '@mui/material/styles'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -24,7 +23,7 @@ const SeriesCard = ({ series, consumeDragEnded, editMode }: SeriesCardProps) => 
   const enabled = s.enabled
 
   const sortable = useSortable({ id: s.id, disabled: !enabled || !editMode })
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = sortable
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable
 
   const handleClick = () => {
     if (consumeDragEnded()) return
@@ -117,7 +116,7 @@ const SeriesCard = ({ series, consumeDragEnded, editMode }: SeriesCardProps) => 
     <Box
       ref={setNodeRef}
       style={style}
-      sx={{ position: 'relative' }}
+      {...(editMode ? { ...attributes, ...listeners } : {})}
       onClick={handleClick}
       sx={{
         cursor: editMode ? (isDragging ? 'grabbing' : 'grab') : 'pointer',

@@ -22,7 +22,7 @@ const SeriesListItem = ({ series, consumeDragEnded, editMode }: Props) => {
   const enabled = s.enabled
 
   const sortable = useSortable({ id: s.id, disabled: !enabled || !editMode })
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = sortable
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable
 
   const handleClick = () => {
     if (consumeDragEnded()) return
@@ -64,7 +64,7 @@ const SeriesListItem = ({ series, consumeDragEnded, editMode }: Props) => {
       {/* Drag handle — only visible in edit mode */}
       {editMode && (
         <Box sx={{ p: 0.5, mx: -0.5, display: 'flex', alignItems: 'center', touchAction: 'none' }}>
-          <Box ref={setActivatorNodeRef} {...attributes} {...listeners} sx={{ display: 'flex', cursor: editMode ? 'grab' : 'default', p: 0.5, borderRadius: 1 }}><DragIndicatorIcon sx={{ fontSize: 20, color: 'text.disabled', flexShrink: 0 }} /></Box>
+          <DragIndicatorIcon sx={{ fontSize: 20, color: 'text.disabled', flexShrink: 0 }} />
         </Box>
       )}
 

@@ -22,6 +22,33 @@ import {
 } from '@/data/index.js'
 import type { IStorageDriver } from '@/data/driver/types.js'
 import type { DriverType } from '@/data/driver/factory.js'
+import { MetaSyncService } from '@/data/sync/metasync.js'
+import type { SeriesJsonFile, MetaJsonFile } from '@/data/sync/metasync.js'
+
+/** Load series.json + _meta.json files → sync to SQLite (idempotent). */
+async function syncFiles(driver: IStorageDriver) {
+  const sync = new MetaSyncService(driver)
+  try {
+    // 1. Load and sync series.json
+    const seriesResp = await fetch('/docs/series.json')
+    if (!seriesResp.ok) return
+    const seriesFile: SeriesJsonFile = await seriesResp.json()
+    await sync.syncSeries(seriesFile)
+
+    // 2. For each enabled series, load and sync _meta.json
+    for (const s of seriesFile.series) {
+      if (!s.enabled) continue
+      const lang = (s as any).language || 'zh-CN'
+      const version = (s as any).version || 'v0.1.0'
+      try {
+        const metaResp = await fetch(`/docs/${lang}/${version}/_meta.json`)
+        if (!metaResp.ok) continue
+        const metaFile: MetaJsonFile = await metaResp.json()
+        await sync.syncMeta(s.id, metaFile)
+      } catch { /* skip broken meta files */ }
+    }
+  } catch { /* sync is best-effort; don't block app startup */ }
+}
 
 interface StorageState {
   driver: IStorageDriver | null
@@ -83,6 +110,9 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         // Run migrations (idempotent)
         const runner = new MigrationRunner(d, allMigrations)
         await runner.run()
+
+        // Sync file data (series.json + _meta.json) into SQLite
+        await syncFiles(d)
 
         if (cancelled) { await d.close(); return }
 

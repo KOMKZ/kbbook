@@ -48,5 +48,5 @@ export interface Article {
   updatedAt: number
 }
 
-export type ArticleCreate = Omit<Article, 'createdAt' | 'updatedAt'>
+export type ArticleCreate = Partial<Omit<Article, 'createdAt' | 'updatedAt'>> & Pick<Article, 'slug' | 'seriesId' | 'title'>
 export type ArticleUpdate = Partial<Omit<Article, 'slug' | 'createdAt' | 'updatedAt'>>

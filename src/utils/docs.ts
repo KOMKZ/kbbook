@@ -351,6 +351,29 @@ let seriesCache: SeriesRegistry | null = null
  */
 export async function loadSeriesRegistry(): Promise<SeriesRegistry> {
   if (seriesCache) return seriesCache
+  // Try SQLite Repo first
+  try {
+    const { getDriver } = await import('@/data/bridge.js')
+    const driver = getDriver()
+    if (driver) {
+      const { SeriesRepo } = await import('@/data/repo/series.js')
+      const repo = new SeriesRepo(driver)
+      const all = await repo.findAll()
+      if (all.length > 0) {
+        const data: SeriesRegistry = {
+          defaultSeries: all[0].id,
+          series: all.map((s: any) => ({
+            id: s.id, title: s.title, shortTitle: s.shortTitle, tagline: s.tagline,
+            description: s.description, version: '', language: 'zh-CN',
+            color: s.color, icon: s.icon, enabled: s.enabled,
+          })),
+        }
+        seriesCache = data
+        return data
+      }
+    }
+  } catch {}
+  // Fallback to series.json file
   try {
     const response = await fetch(`${_docBaseUrl}/docs/series.json`)
     if (!response.ok) throw new Error('Failed to load series.json')

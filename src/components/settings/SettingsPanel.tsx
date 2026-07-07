@@ -190,16 +190,15 @@ const SettingsPanel = () => {
     fetch('/version.json').then(r => r.json()).then(d => setWebVersion(d.version || '0.1.0')).catch(() => setWebVersion('0.1.0'))
   }, [])
 
-  // On mount: try to restore OSS config from native SharedPreferences
+  // On mount: restore OSS config from Repo
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('kbbook-oss-config')
-      if (!saved) {
-        // localStorage empty — config might be in native prefs, defaults will show
-        setOssCfg(loadOssConfig())
-        setOssSaved(loadOssConfig())
+    getPreferencesRepo()?.get<typeof OSS_DEFAULTS>('kbbook-oss-config').then((saved) => {
+      if (saved && saved.bucket) {
+        const cfg = { ...OSS_DEFAULTS, ...saved }
+        setOssCfg(cfg)
+        setOssSaved(cfg)
       }
-    } catch {}
+    }).catch(() => {})
   }, [])
 
   const isLocal = mode === 'local'

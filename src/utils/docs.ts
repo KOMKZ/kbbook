@@ -237,20 +237,16 @@ export async function loadDocsMeta(version: string, lang?: LanguageCode, seriesI
     return metaCache.get(cacheKey)!
   }
 
-  // SQLite Repo — retry until ready
+  // SQLite Repo (StorageProvider guarantees driver is ready)
   if (seriesId) {
-    for (let i = 0; i < 50; i++) {
-      const fromRepo = await loadDocsMetaFromRepo(seriesId, version)
-      if (fromRepo && fromRepo.items.length > 0) {
-        metaCache.set(cacheKey, fromRepo)
-        return fromRepo
-      }
-      // Driver not ready or empty DB — wait and retry
-      await new Promise(r => setTimeout(r, 100))
+    const fromRepo = await loadDocsMetaFromRepo(seriesId, version)
+    if (fromRepo && fromRepo.items.length > 0) {
+      metaCache.set(cacheKey, fromRepo)
+      return fromRepo
     }
   }
 
-  // Timeout — return minimal fallback (don't cache)
+  // Empty — return minimal fallback (don't cache)
   return {
     title: '文档',
       items: [
@@ -344,32 +340,28 @@ let seriesCache: SeriesRegistry | null = null
  */
 export async function loadSeriesRegistry(): Promise<SeriesRegistry> {
   if (seriesCache) return seriesCache
-  // Try SQLite Repo — wait for driver to be ready
-  for (let i = 0; i < 50; i++) {
-    try {
-      const { getDriver } = await import('@/data/bridge.js')
-      const driver = getDriver()
-      if (driver) {
-        const { SeriesRepo } = await import('@/data/repo/series.js')
-        const repo = new SeriesRepo(driver)
-        const all = await repo.findAll()
-        if (all.length > 0) {
-          const data: SeriesRegistry = {
-            defaultSeries: all[0].id,
-            series: all.map((s: any) => ({
-              id: s.id, title: s.title, shortTitle: s.shortTitle, tagline: s.tagline,
-              description: s.description, version: '', language: 'zh-CN',
-              color: s.color, icon: s.icon, enabled: s.enabled,
-            })),
-          }
-          seriesCache = data
-          return data
+  // SQLite Repo (StorageProvider guarantees driver is ready)
+  try {
+    const { getDriver } = await import('@/data/bridge.js')
+    const driver = getDriver()
+    if (driver) {
+      const { SeriesRepo } = await import('@/data/repo/series.js')
+      const repo = new SeriesRepo(driver)
+      const all = await repo.findAll()
+      if (all.length > 0) {
+        const data: SeriesRegistry = {
+          defaultSeries: all[0].id,
+          series: all.map((s: any) => ({
+            id: s.id, title: s.title, shortTitle: s.shortTitle, tagline: s.tagline,
+            description: s.description, version: '', language: 'zh-CN',
+            color: s.color, icon: s.icon, enabled: s.enabled,
+          })),
         }
+        seriesCache = data
+        return data
       }
-    } catch {}
-    // Driver not ready yet — wait and retry (max 5s)
-    await new Promise(r => setTimeout(r, 100))
-  }
+    }
+  } catch {}
   return { defaultSeries: 'llm', series: [] }
 }
 

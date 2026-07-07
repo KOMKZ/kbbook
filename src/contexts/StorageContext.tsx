@@ -164,6 +164,11 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     return r
   }, [state.driver, state.ready])
 
+  // Block rendering until storage is ready
+  if (!state.ready && !state.error) {
+    return <StorageCtx.Provider value={{ ...state, repos }}>{null}</StorageCtx.Provider>
+  }
+
   return (
     <StorageCtx.Provider value={{ ...state, repos }}>
       {children}

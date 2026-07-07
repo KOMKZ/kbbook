@@ -485,7 +485,7 @@ const SettingsPanel = () => {
       {/* Floating expand button when sidebar collapsed */}
       {!sidebarOpen && (
         <IconButton size="small" onClick={() => { try { localStorage.setItem("kbbook-settings-sidebar", "1") } catch {}; setSidebarOpen(true) }}
-          sx={{ position: 'absolute', top: 8, left: 8, zIndex: 20,
+          sx={{ position: 'fixed', top: 'calc(var(--header-height, 64px) + 8px)', left: 8, zIndex: 20,
             bgcolor: 'background.paper', boxShadow: 2,
             '&:hover': { bgcolor: 'action.hover' } }}>
           <MenuIcon fontSize="small" />

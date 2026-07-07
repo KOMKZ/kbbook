@@ -15,6 +15,7 @@ import {
   readLocalDoc,
   type SyncStatus,
   type SyncResult,
+  type OssConfig,
 } from '../plugins/lz-portal-sync'
 import { configureDocLoader } from '../utils/docs'
 
@@ -29,7 +30,7 @@ interface DocModeState {
 interface DocModeContextValue extends DocModeState {
   switchMode: (mode: 'local' | 'network') => Promise<void>
   updateNetworkUrl: (url: string) => Promise<void>
-  triggerSync: () => Promise<void>
+  triggerSync: (ossCfg?: OssConfig) => Promise<void>
   /** 模式感知的文档加载: 本地=插件读, 网络=fetch */
   loadDoc: (path: string) => Promise<string>
   loadJson: (path: string) => Promise<any>
@@ -93,10 +94,10 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, networkUrl: url }))
   }, [])
 
-  const triggerSync = useCallback(async () => {
+  const triggerSync = useCallback(async (ossCfg?: OssConfig) => {
     setState((s) => ({ ...s, syncing: true }))
     try {
-      const result = await syncFromOSS()
+      const result = await syncFromOSS(ossCfg)
       const status = await getSyncStatus()
       setState((s) => ({ ...s, syncing: false, syncStatus: status, syncResult: result }))
     } catch (e) {

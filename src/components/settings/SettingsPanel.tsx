@@ -197,11 +197,11 @@ const SettingsPanel = () => {
   const handleSync = async () => {
     setProgress(null)
     try {
-      await triggerSync()
+      await triggerSync(ossCfg)
       setToast({ message: 'OSS 同步完成', severity: 'success' })
-    } catch {
+    } catch (e: any) {
       setProgress(null)
-      setToast({ message: 'OSS 同步失败，请检查网络连接', severity: 'error' })
+      setToast({ message: e?.message || 'OSS 同步失败，请检查网络连接', severity: 'error' })
     }
   }
 

@@ -57,7 +57,7 @@ export interface WebVersionResult {
 
 export interface LZPortalSyncPlugin {
   readLocalDoc(options: { path: string }): Promise<ReadLocalDocResult>
-  syncFromOSS(): Promise<SyncResult>
+  syncFromOSS(options?: { endpoint?: string; bucket?: string; path?: string; accessKeyId?: string; accessKeySecret?: string }): Promise<SyncResult>
   getSyncStatus(): Promise<SyncStatus>
   getMode(): Promise<ModeResult>
   setMode(options: { mode: string }): Promise<void>
@@ -90,8 +90,33 @@ export const readLocalDoc = async (path: string): Promise<ReadLocalDocResult> =>
   return { content: await resp.text(), source: 'assets' }
 }
 
-export const syncFromOSS = async (): Promise<SyncResult> => {
-  if (isNative()) return LZPortalSync.syncFromOSS()
+export interface OssConfig {
+  endpoint?: string
+  bucket?: string
+  path?: string
+  accessKeyId?: string
+  accessKeySecret?: string
+}
+
+export const syncFromOSS = async (ossCfg?: OssConfig): Promise<SyncResult> => {
+  if (isNative()) {
+    // Pass user config to native plugin if provided
+    if (ossCfg?.accessKeyId) {
+      return LZPortalSync.syncFromOSS(ossCfg)
+    }
+    return LZPortalSync.syncFromOSS()
+  }
+  // Web mode: attempt a quick connectivity check with user config
+  if (ossCfg?.endpoint && ossCfg?.bucket && ossCfg?.accessKeyId) {
+    try {
+      const url = `${ossCfg.endpoint}/${ossCfg.bucket}/${ossCfg.path || ''}/manifest.json`
+      const resp = await fetch(url)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      return { fileCount: 0, totalSize: 0, version: 'web-check', skipped: false, added: 0, updated: 0, deleted: 0 }
+    } catch (e: any) {
+      throw new Error(`OSS 连接失败: ${e.message}. 请检查 OSS 配置 (Endpoint/Bucket/Key)`)
+    }
+  }
   return { fileCount: 0, totalSize: 0, version: 'web', skipped: true, added: 0, updated: 0, deleted: 0 }
 }
 

@@ -31,7 +31,6 @@ import { getPreferencesRepo } from '@/data/bridge.js'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
-import WifiIcon from '@mui/icons-material/Wifi'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import SystemUpdateIcon from '@mui/icons-material/SystemUpdate'
 import AddIcon from '@mui/icons-material/Add'
@@ -140,8 +139,7 @@ const SettingsPanel = () => {
   const [active, setActive] = useState<NavId>('general')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const isNarrow = useMediaQuery('(max-width:600px)')
-  const { networkUrl, syncStatus, syncing, updateNetworkUrl, triggerSync, syncResult } = useDocMode()
-  const [urlInput, setUrlInput] = useState(networkUrl)
+  const { networkUrl, syncStatus, syncing, triggerSync, syncResult } = useDocMode()
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
   const [webVersion, setWebVersion] = useState<string>('...')
@@ -204,11 +202,6 @@ const SettingsPanel = () => {
 
   const isSyncing = syncing || (progress != null && progress.stage !== 'done')
   const progressPercent = progress?.percent ?? 0
-
-  const handleUrlSave = async () => {
-    await updateNetworkUrl(urlInput)
-    setToast({ message: '网络地址已保存', severity: 'success' })
-  }
 
   const handleDocSync = async () => {
     setProgress(null)

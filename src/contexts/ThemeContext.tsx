@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useMemo, ReactNode } fr
 import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { getTheme, ThemeMode } from '../themes'
+import { getPreferencesRepo } from '@/data/bridge.js'
 
 const THEME_STORAGE_KEY = 'kbbook-theme-mode'
 
@@ -54,7 +55,7 @@ export const ThemeProvider = ({ children }: ThemeProviderProps) => {
   const setMode = (newMode: ThemeMode) => {
     setModeState(newMode)
     localStorage.setItem(THEME_STORAGE_KEY, newMode)
-    // 更新 HTML 属性用于 CSS 变量
+    try { getPreferencesRepo()?.set(THEME_STORAGE_KEY, newMode) } catch {}
     document.documentElement.setAttribute('data-theme', newMode)
   }
 

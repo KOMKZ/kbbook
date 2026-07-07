@@ -35,6 +35,7 @@ import SeriesCard from '../components/home/SeriesCard'
 import SeriesListItem from '../components/home/SeriesListItem'
 import PageToolbar from '../components/docs/PageToolbar'
 import { useReadingHistory } from '../hooks/useReadingHistory'
+import { getPreferencesRepo } from '@/data/bridge.js'
 
 type LayoutMode = 'list' | 'card'
 const LAYOUT_KEY = 'lz-home-layout'
@@ -62,6 +63,7 @@ const HomePage = () => {
   const setLayoutPersist = (mode: LayoutMode) => {
     setLayout(mode)
     try { localStorage.setItem(LAYOUT_KEY, mode) } catch {}
+    try { getPreferencesRepo()?.set(LAYOUT_KEY, mode) } catch {}
   }
 
   const { items: recentItems } = useReadingHistory()

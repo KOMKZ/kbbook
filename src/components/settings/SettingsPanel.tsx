@@ -246,29 +246,10 @@ const SettingsPanel = () => {
       case 'sync':
         return (
           <>
-            {/* 内网同步 */}
+            {/* OSS 同步（文档 + 数据） */}
             <Section
-              title="内网同步"
-              subtitle="从开发服务器拉取最新文档和数据"
-              icon={<WifiIcon color="primary" />}
-            >
-              <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
-                <TextField size="small" fullWidth value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
-                  placeholder="http://192.168.x.x:3004"
-                />
-                <Button variant="contained" onClick={handleUrlSave} size="small">保存</Button>
-              </Box>
-              <Button variant="outlined" size="small" onClick={handleDocSync} disabled={isSyncing}
-                startIcon={isSyncing ? <CircularProgress size={14} /> : <SyncIcon fontSize="small" />}>
-                {isSyncing ? '同步中...' : '从内网同步文档'}
-              </Button>
-            </Section>
-
-            {/* OSS 文档同步 */}
-            <Section
-              title="OSS 文档同步"
-              subtitle="从阿里云 OSS 拉取最新文档到本地"
+              title="OSS 同步"
+              subtitle="从阿里云 OSS 拉取最新文档和数据（增量 MD5 diff）"
               icon={<CloudSyncIcon color="primary" />}
             >
               {syncStatus.lastSyncTime && (
@@ -307,8 +288,35 @@ const SettingsPanel = () => {
 
               <Button variant="outlined" startIcon={isSyncing ? <CircularProgress size={16} /> : <CloudSyncIcon />}
                 onClick={handleDocSync} disabled={isSyncing} fullWidth>
-                {isSyncing ? '同步中...' : '立即同步'}
+                {isSyncing ? '同步中...' : '立即同步文档'}
               </Button>
+              <Button variant="outlined" size="small" sx={{ mt: 1 }} fullWidth
+                onClick={async () => {
+                  try {
+                    const { getDriver, getPreferencesRepo } = await import('@/data/bridge.js')
+                    const driver = getDriver()
+                    const prefs = getPreferencesRepo()
+                    if (!driver || !prefs) { setToast({ message: '存储未就绪', severity: 'error' }); return }
+                    const cfg = await prefs.get<Record<string, string>>('kbbook-oss-config')
+                    if (!cfg?.bucket) { setToast({ message: '请先配置 OSS 参数', severity: 'error' }); return }
+                    setToast({ message: '正在从 OSS 拉取数据...', severity: 'success' })
+                    const { pullLatest, mergeFromOss } = await import('@/data/sync/oss.js')
+                    const { exportDatabase, importDatabase } = await import('@/data/migration/exporter.js')
+                    const result = await pullLatest({
+                      bucket: cfg.bucket, region: cfg.region || 'oss-cn-hangzhou',
+                      accessKeyId: cfg.accessKeyId, accessKeySecret: cfg.accessKeySecret,
+                      path: cfg.path,
+                    })
+                    if (!result.success || !result.dump) {
+                      setToast({ message: `拉取失败: ${result.error}`, severity: 'error' }); return
+                    }
+                    const localDump = await exportDatabase(driver)
+                    const merged = mergeFromOss(localDump, result.dump)
+                    await importDatabase(driver, merged)
+                    setToast({ message: `数据同步完成 (${((result.sizeBytes || 0) / 1024).toFixed(1)} KB)`, severity: 'success' })
+                  } catch (e) { setToast({ message: '数据同步异常: ' + (e as Error).message, severity: 'error' }) }
+                }}
+              >同步 SQLite 数据</Button>
             </Section>
 
             {/* OSS 配置 */}

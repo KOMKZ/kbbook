@@ -8,6 +8,7 @@ import Chip from '@mui/material/Chip'
 import Button from '@mui/material/Button'
 import Link from '@mui/material/Link'
 import GitHubIcon from '@mui/icons-material/GitHub'
+import HistoryIcon from '@mui/icons-material/History'
 import { useTheme } from '@mui/material/styles'
 import {
   DndContext,
@@ -33,6 +34,7 @@ import QuoteBanner from '../components/home/QuoteBanner'
 import SeriesCard from '../components/home/SeriesCard'
 import SeriesListItem from '../components/home/SeriesListItem'
 import PageToolbar from '../components/docs/PageToolbar'
+import { useReadingHistory } from '../hooks/useReadingHistory'
 
 type LayoutMode = 'list' | 'card'
 const LAYOUT_KEY = 'lz-home-layout'
@@ -61,6 +63,14 @@ const HomePage = () => {
     setLayout(mode)
     try { localStorage.setItem(LAYOUT_KEY, mode) } catch {}
   }
+
+  const { items: recentItems } = useReadingHistory()
+  const recent5 = useMemo(() => recentItems.slice(0, 5), [recentItems])
+  const seriesMap = useMemo(() => {
+    const map: Record<string, Series> = {}
+    for (const s of seriesList) { map[s.id] = s }
+    return map
+  }, [seriesList])
 
   const [orderedSeries, reorderSeries] = useSeriesOrder(seriesList)
   const orderedIds = useMemo(() => orderedSeries.map((s) => s.id), [orderedSeries])
@@ -166,6 +176,49 @@ const HomePage = () => {
             />
           </Stack>
         </Box>
+
+        {/* 最近阅读 */}
+        {recent5.length > 0 && (
+          <Box sx={{ mb: { xs: 3, md: 4 } }}>
+            <Typography variant="overline" color="text.secondary" fontWeight={600} sx={{ letterSpacing: 1, mb: 1.5, display: 'block' }}>
+              最近阅读
+            </Typography>
+            <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+              {recent5.map((entry, idx) => {
+                const s = seriesMap[entry.seriesId]
+                const seriesName = s?.shortTitle || s?.title || entry.seriesId
+                return (
+                  <Box
+                    key={entry.slug}
+                    component={RouterLink}
+                    to={`/docs/${entry.seriesId}/${entry.slug}`}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      px: 2,
+                      py: 1.5,
+                      textDecoration: 'none',
+                      color: 'text.primary',
+                      borderBottom: idx < recent5.length - 1 ? 1 : 0,
+                      borderColor: 'divider',
+                      '&:hover': { bgcolor: 'action.hover' },
+                    }}
+                  >
+                    <HistoryIcon sx={{ fontSize: 18, color: 'text.disabled', mr: 1.5, flexShrink: 0 }} />
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" fontWeight={500} noWrap>
+                        {entry.title}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {seriesName}
+                      </Typography>
+                    </Box>
+                  </Box>
+                )
+              })}
+            </Box>
+          </Box>
+        )}
 
         {/* 系列宫格 / 列表 */}
         <Box sx={{ mb: { xs: 3, md: 4 } }}>

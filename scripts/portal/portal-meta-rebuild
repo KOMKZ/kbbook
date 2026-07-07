@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""
+portal-meta-rebuild — 扫描系列目录树,自动重建 _meta.json
+
+用法:
+  ./portal-meta-rebuild <series-dir>
+
+约定:
+  - 普通系列: group/ → article.md (扁平,每个 .md 是一个 article)
+  - Quiz 系列: category/topic/question-slug/ 目录下如果有 question.md,
+               该目录作为一个 article (slug 指向 question.md),
+               answer.md/explanation.md 不单独列出
+  - 忽略 index.md / article.md(生成的)
+"""
+
+import sys, os, json, re
+from pathlib import Path
+
+TITLE_MAP = {
+    'go-runtime': 'Go Runtime', 'go-basic': 'Go 基础',
+    'go-concurrency': 'Go 并发', 'goroutine-scheduler': 'goroutine 调度器',
+    'zero-values': '变量声明与零值', 'memory-model': '内存模型',
+}
+
+def guess_title(slug: str) -> str:
+    return TITLE_MAP.get(slug, slug.replace('-', ' ').title())
+
+def extract_h1(filepath: Path) -> str:
+    try:
+        content = filepath.read_text(encoding='utf-8')
+        m = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+        if m:
+            title = m.group(1).strip()
+            title = re.sub(r'^\[[^\]]+\]\s*', '', title)
+            return title
+    except: pass
+    return filepath.stem.replace('-', ' ').title()
+
+def is_quiz_question_dir(d: Path) -> bool:
+    """判断目录是否是一个 quiz 题目目录(包含 question.md)"""
+    return (d / 'question.md').exists()
+
+def scan_tree(root: Path, rel_base: Path) -> list:
+    """扫描目录树,返回 items 列表"""
+    items = []
+    order = 0
+
+    # 子目录
+    subdirs = sorted(
+        [d for d in root.iterdir() if d.is_dir() and not d.name.startswith('.')],
+        key=lambda d: d.name
+    )
+
+    for subdir in subdirs:
+        if is_quiz_question_dir(subdir):
+            # Quiz 题目目录 → 作为一个 article
+            order += 1
+            rel = str(subdir.relative_to(rel_base)).replace('\\', '/')
+            qf = subdir / 'question.md'
+            items.append({
+                'slug': f'{rel}/question',
+                'title': extract_h1(qf),
+                'order': order
+            })
+        else:
+            # 普通目录 → 递归,作为 group
+            child_items = scan_tree(subdir, rel_base)
+            if child_items:
+                order += 1
+                items.append({
+                    'slug': str(subdir.relative_to(rel_base)).replace('\\', '/'),
+                    'title': guess_title(subdir.name),
+                    'order': order,
+                    'isGroup': True,
+                    'items': child_items
+                })
+
+    # 顶层 .md 文件(普通系列用)
+    md_files = sorted(
+        [f for f in root.iterdir() if f.suffix == '.md' and f.name not in ('index.md', 'article.md')],
+        key=lambda f: f.name
+    )
+    for f in md_files:
+        order += 1
+        rel = str(f.relative_to(rel_base)).replace('\\', '/')
+        items.append({
+            'slug': rel.replace('.md', ''),
+            'title': extract_h1(f),
+            'order': order
+        })
+
+    return items
+
+def load_existing_title(meta_file: Path) -> str:
+    """从已有 _meta.json 读取标题(如果存在)"""
+    if meta_file.exists():
+        try:
+            old = json.loads(meta_file.read_text(encoding='utf-8'))
+            return old.get('title', '')
+        except: pass
+    return ''
+
+def main():
+    if len(sys.argv) < 2:
+        print(f"用法: {sys.argv[0]} <series-dir>")
+        sys.exit(1)
+
+    root = Path(sys.argv[1]).resolve()
+    if not root.is_dir():
+        print(f"错误: 目录不存在 — {root}")
+        sys.exit(1)
+
+    meta_file = root / '_meta.json'
+    existing_title = load_existing_title(meta_file)
+
+    items = scan_tree(root, root)
+    title = existing_title or f"LZ Lab · {guess_title(root.name.replace('-v0.1.0', '').replace('-v0.2.0', ''))}"
+
+    meta = {'title': title, 'items': items}
+    meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+    def count_items(it):
+        n = 0
+        for i in it:
+            n += 1
+            if i.get('items'): n += count_items(i['items'])
+        return n
+
+    groups = [i for i in items if i.get('isGroup')]
+    articles = [i for i in items if not i.get('isGroup')]
+    print(f"✅ _meta.json 已重建: {meta_file}")
+    print(f"   标题: {title}")
+    print(f"   一级分组: {len(groups)} | 一级文章: {len(articles)} | 总条目: {count_items(items)}")
+
+if __name__ == '__main__':
+    main()

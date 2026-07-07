@@ -1,0 +1,28 @@
+{
+  "defaultSeries": "demo",
+  "series": [
+    {
+      "id": "demo",
+      "title": "Getting Started",
+      "shortTitle": "Demo",
+      "tagline": "Learn how to use KBBook to build your own documentation portal",
+      "description": "A step-by-step guide to setting up KBBook, configuring series, writing articles in Markdown, and deploying your documentation site.",
+      "version": "demo-v0.1.0",
+      "language": "zh-CN",
+      "color": "#5046e5",
+      "icon": "📖",
+      "enabled": true
+    },
+    {
+      "id": "coming-soon",
+      "title": "Your Series Here",
+      "shortTitle": "Coming Soon",
+      "tagline": "Add your own series by editing series.json",
+      "version": "demo-v0.1.0",
+      "language": "zh-CN",
+      "color": "#94a3b8",
+      "icon": "📚",
+      "enabled": false
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "versions": [
+    {
+      "version": "0.1.0",
+      "label": "v0.1.0 (Initial)",
+      "path": "demo-v0.1.0",
+      "isLatest": true
+    }
+  ],
+  "defaultVersion": "demo-v0.1.0",
+  "supportedLanguages": ["zh-CN", "en"],
+  "defaultLanguage": "zh-CN"
+}

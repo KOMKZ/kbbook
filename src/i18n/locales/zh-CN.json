@@ -1,0 +1,117 @@
+{
+  "common": {
+    "home": "首页",
+    "docs": "文档",
+    "examples": "专题",
+    "blog": "文章",
+    "login": "登录",
+    "getStarted": "开始阅读",
+    "learnMore": "查看更多",
+    "viewDocs": "进入文档",
+    "language": "语言",
+    "search": "搜索",
+    "copyright": "© {{year}} KBBook. Powered by KBBook.",
+    "quickStart": "快速开始",
+    "lightMode": "切换亮色模式",
+    "darkMode": "切换暗色模式",
+    "theme": "主题"
+  },
+  "nav": {
+    "quickstart": "起步指南",
+    "apiReference": "文档说明",
+    "components": "学习路径",
+    "bestPractices": "写作约定",
+    "github": "仓库",
+    "discord": "外链",
+    "discussions": "讨论",
+    "changelog": "变更记录",
+    "roadmap": "路线图"
+  },
+  "hero": {
+    "title": "KBBook",
+    "subtitle": "学习文档库",
+    "tagline": "沉淀 AI 学习过程、教程、文章与实践笔记",
+    "quickStart": "开始阅读",
+    "viewDocs": "查看文档"
+  },
+  "features": {
+    "sectionTitle": "文档能力",
+    "sectionSubtitle": "为长期学习而准备",
+    "sectionDescription": "这个站点用于沉淀你的 AI 自学内容。你可以逐步加入教程、专题文章、框架分析、实验记录和实践总结。",
+    "componentBased": {
+      "title": "Markdown 驱动",
+      "description": "文章内容直接放在 public/docs 下，新增文档和维护目录都很直接。"
+    },
+    "highPerformance": {
+      "title": "版本化管理",
+      "description": "支持按版本组织文档，适合在学习体系逐步演进时保留历史快照。"
+    },
+    "security": {
+      "title": "教程友好",
+      "description": "内置代码高亮、Mermaid 渲染和目录导航，适合写技术教程与原理拆解。"
+    },
+    "cloudNative": {
+      "title": "中文优先",
+      "description": "当前站点只保留中文内容与中文默认配置，减少维护成本。"
+    },
+    "dataLayer": {
+      "title": "结构清晰",
+      "description": "首页、文档页、侧边栏、目录树已准备好，可以直接开始写文章。"
+    },
+    "observability": {
+      "title": "可继续扩展",
+      "description": "后续如果需要英文、多版本专题或更多栏目，可以在这个骨架上继续扩展。"
+    }
+  },
+  "architecture": {
+    "sectionTitle": "内容组织",
+    "sectionSubtitle": "先搭骨架，再持续沉淀",
+    "sectionDescription": "建议先按概览、起步、专题、实战、复盘这样的结构积累文章，随着学习深入再按框架、模型、工具链做细分。",
+    "imagePlaceholder": "这里可以替换成你自己的学习地图或知识体系图",
+    "layers": {
+      "application": {
+        "title": "教程层",
+        "description": "放入可直接阅读的教程、步骤说明和实战文章。"
+      },
+      "domain": {
+        "title": "专题层",
+        "description": "整理某个模型、框架、工作流或系统设计的主题内容。"
+      },
+      "kernel": {
+        "title": "知识层",
+        "description": "沉淀抽象概念、方法论、复盘笔记和长期有效的理解。"
+      }
+    }
+  },
+  "footer": {
+    "brand": {
+      "description": "个人 AI 自学教程与知识沉淀文档站。"
+    },
+    "sections": {
+      "docs": "文档",
+      "community": "入口",
+      "more": "更多"
+    }
+  },
+  "docs": {
+    "version": "文档版本",
+    "toc": "本页目录",
+    "sidebar": {
+      "title": "文档"
+    },
+    "notFound": {
+      "title": "文档未找到",
+      "message": "抱歉，找不到请求的文档。",
+      "backHome": "返回首页"
+    }
+  },
+  "cta": {
+    "title": "现在就开始沉淀第一篇内容",
+    "description": "项目骨架已经就绪。你后续只需要新增 Markdown 文件并维护目录元数据，就可以不断扩充这座 AI 学习文档库。",
+    "getStarted": "查看起步文档",
+    "learnMore": "你可以先看看：",
+    "quickstartGuide": "起步说明",
+    "componentsDocs": "文档库介绍",
+    "examples": "项目 README"
+  }
+}

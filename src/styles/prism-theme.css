@@ -1,0 +1,213 @@
+/**
+ * Prism 代码高亮主题
+ * 
+ * 基于 One Dark Pro 配色
+ * 代码块始终使用深色背景（更专业）
+ */
+
+/* ========================================
+   基础样式
+   ======================================== */
+
+code[class*="language-"],
+pre[class*="language-"] {
+  color: #abb2bf;
+  background: none;
+  text-shadow: none;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, 'Andale Mono', monospace;
+  font-size: 0.85rem;
+  text-align: left;
+  white-space: pre;
+  word-spacing: normal;
+  word-break: normal;
+  word-wrap: normal;
+  line-height: 1.7;
+  tab-size: 2;
+  hyphens: none;
+}
+
+/* ========================================
+   Token 样式
+   ======================================== */
+
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #5c6370;
+  font-style: italic;
+}
+
+.token.punctuation {
+  color: #abb2bf;
+}
+
+.token.namespace {
+  opacity: 0.7;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: #e06c75;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #98c379;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: #56b6c2;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #c678dd;
+}
+
+.token.function,
+.token.class-name {
+  color: #61afef;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: #d19a66;
+}
+
+.token.important,
+.token.bold {
+  font-weight: bold;
+}
+
+.token.italic {
+  font-style: italic;
+}
+
+.token.entity {
+  cursor: help;
+}
+
+/* ========================================
+   语言特定样式
+   ======================================== */
+
+/* Go */
+.language-go .token.keyword {
+  color: #c678dd;
+}
+
+.language-go .token.function {
+  color: #61afef;
+}
+
+.language-go .token.string {
+  color: #98c379;
+}
+
+.language-go .token.builtin {
+  color: #e5c07b;
+}
+
+/* TypeScript / JavaScript */
+.language-typescript .token.keyword,
+.language-javascript .token.keyword {
+  color: #c678dd;
+}
+
+.language-typescript .token.builtin,
+.language-javascript .token.builtin {
+  color: #e5c07b;
+}
+
+/* YAML */
+.language-yaml .token.key {
+  color: #e06c75;
+}
+
+.language-yaml .token.string {
+  color: #98c379;
+}
+
+.language-yaml .token.boolean,
+.language-yaml .token.number {
+  color: #d19a66;
+}
+
+/* Bash / Shell */
+.language-bash .token.function,
+.language-shell .token.function {
+  color: #61afef;
+}
+
+.language-bash .token.parameter,
+.language-shell .token.parameter {
+  color: #d19a66;
+}
+
+/* JSON */
+.language-json .token.property {
+  color: #e06c75;
+}
+
+.language-json .token.string {
+  color: #98c379;
+}
+
+.language-json .token.number {
+  color: #d19a66;
+}
+
+.language-json .token.boolean,
+.language-json .token.null {
+  color: #56b6c2;
+}
+
+/* SQL */
+.language-sql .token.keyword {
+  color: #c678dd;
+}
+
+.language-sql .token.function {
+  color: #61afef;
+}
+
+/* ========================================
+   选中样式
+   ======================================== */
+
+code[class*="language-"]::selection,
+pre[class*="language-"]::selection,
+code[class*="language-"] ::selection,
+pre[class*="language-"] ::selection {
+  background: rgba(99, 102, 241, 0.3);
+}
+
+/* ========================================
+   行号（可选）
+   ======================================== */
+
+.line-numbers .line-numbers-rows {
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  padding-right: 8px;
+  margin-right: 12px;
+}
+
+.line-numbers-rows > span::before {
+  color: #5c6370;
+}

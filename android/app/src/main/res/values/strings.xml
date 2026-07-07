@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">KBBook</string>
+    <string name="title_activity_main">KBBook</string>
+    <string name="package_name">com.kbbook.app</string>
+    <string name="custom_url_scheme">com.kbbook.app</string>
+</resources>

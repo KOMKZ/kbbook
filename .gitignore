@@ -1,0 +1,59 @@
+# Dependencies
+node_modules
+
+# Build output
+/dist
+dist.zip
+
+# Local env files
+.env.local
+.env.*.local
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Vite
+vite.config.ts.timestamp-*
+
+# ========================
+# Android / Capacitor App
+# ========================
+
+# Capacitor generated config (auto-generated)
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/public/
+
+# Android build artifacts
+android/app/build/
+android/build/
+android/.gradle/
+android/captures/
+android/local.properties
+
+# Gradle IDE files
+android/.idea/
+android/*.iml
+android/app/*.iml
+
+# App release output
+release/
+

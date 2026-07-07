@@ -1,0 +1,34 @@
+{
+  "title": "KBBook · Getting Started",
+  "items": [
+    {
+      "slug": "01-getting-started",
+      "title": "01 Welcome to KBBook",
+      "order": 1,
+      "isGroup": false,
+      "items": [
+        { "slug": "01-welcome", "title": "Welcome to KBBook", "order": 1 }
+      ]
+    },
+    {
+      "slug": "02-setup",
+      "title": "02 Setup & Configuration",
+      "order": 2,
+      "isGroup": true,
+      "items": [
+        { "slug": "02-quickstart", "title": "Quick Start", "order": 1 },
+        { "slug": "03-series-config", "title": "Series & Content Configuration", "order": 2 }
+      ]
+    },
+    {
+      "slug": "03-writing",
+      "title": "03 Writing Articles",
+      "order": 3,
+      "isGroup": true,
+      "items": [
+        { "slug": "04-markdown-guide", "title": "Markdown Writing Guide", "order": 1 },
+        { "slug": "05-deployment", "title": "Build & Deployment", "order": 2 }
+      ]
+    }
+  ]
+}

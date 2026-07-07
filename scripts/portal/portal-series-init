@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""
+portal-series-init — 初始化一个新的学习系列
+
+用法:
+  ./portal-series-init <series-id> <series-title> [选项]
+
+示例:
+  ./portal-series-init quiz "答题系统" --icon "📝" --color "#10b981" --tagline "AI 出题 + 自主答题 + AI 评分"
+
+功能:
+  1. 在 public/docs/zh-CN/ 下创建 {id}-v0.1.0/ 目录
+  2. 在 public/docs/series.json 中注册系列
+  3. 创建空 _meta.json
+  4. 创建空 roadmap-{id}.json
+  5. 打印注册结果
+"""
+
+import sys, os, json, argparse
+from pathlib import Path
+
+PORTAL_ROOT = Path(__file__).resolve().parent.parent.parent
+DOCS_ROOT = PORTAL_ROOT / 'public/docs/zh-CN'
+SERIES_JSON = PORTAL_ROOT / 'public/docs/series.json'
+
+def main():
+    parser = argparse.ArgumentParser(description='初始化一个新的学习系列')
+    parser.add_argument('id', help='系列 ID (如 quiz, go-basic)')
+    parser.add_argument('title', help='系列标题 (如 答题系统)')
+    parser.add_argument('--short-title', '-s', help='短标题')
+    parser.add_argument('--tagline', '-t', default='', help='标语')
+    parser.add_argument('--description', '-d', default='', help='描述')
+    parser.add_argument('--icon', '-i', default='📚', help='图标 emoji')
+    parser.add_argument('--color', '-c', default='#5046e5', help='主题色')
+    parser.add_argument('--version', '-v', default='v0.1.0', help='版本号')
+    parser.add_argument('--language', '-l', default='zh-CN', help='语言')
+    parser.add_argument('--dry-run', '-n', action='store_true', help='不实际写入,仅预览')
+    args = parser.parse_args()
+
+    series_id = args.id
+    version_dir_name = f'{series_id}-{args.version}'
+    series_dir = DOCS_ROOT / version_dir_name
+    roadmap_path = f'/roadmap-{series_id}.json'
+    short_title = args.short_title or args.title
+
+    # ---- 1. 预览 ----
+    print(f"系列 ID:    {series_id}")
+    print(f"标题:       {args.title}")
+    print(f"目录:       {series_dir}")
+    print(f"Roadmap:    {roadmap_path}")
+    print(f"图标:       {args.icon}  颜色: {args.color}")
+    print()
+
+    if args.dry_run:
+        print("[dry-run] 不会实际写入")
+        return
+
+    # ---- 2. 创建目录 ----
+    series_dir.mkdir(parents=True, exist_ok=True)
+
+    # ---- 3. 创建 _meta.json ----
+    meta = {
+        'title': f'LZ Lab · {args.title}',
+        'items': []
+    }
+    (series_dir / '_meta.json').write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2) + '\n',
+        encoding='utf-8'
+    )
+    print(f"✅ _meta.json 已创建")
+
+    # ---- 4. 创建空 roadmap ----
+    roadmap = {
+        'generatedAt': '',
+        'stages': [],
+        'stats': {
+            'stageCount': 0,
+            'totalArticles': 0,
+            'completedStages': 0,
+            'inProgressStages': 0,
+            'todoStages': 0
+        }
+    }
+    roadmap_file = PORTAL_ROOT / 'public' / f'roadmap-{series_id}.json'
+    roadmap_file.write_text(
+        json.dumps(roadmap, ensure_ascii=False, indent=2) + '\n',
+        encoding='utf-8'
+    )
+    print(f"✅ roadmap-{series_id}.json 已创建")
+
+    # ---- 5. 注册到 series.json ----
+    if not SERIES_JSON.exists():
+        print(f"⚠️  series.json 不存在,跳过注册")
+        return
+
+    registry = json.loads(SERIES_JSON.read_text(encoding='utf-8'))
+
+    # 检查是否已存在
+    existing = next((s for s in registry.get('series', []) if s['id'] == series_id), None)
+    if existing:
+        print(f"⚠️  系列 '{series_id}' 已在 series.json 中注册,跳过")
+        print(f"   如需更新: 手动编辑 {SERIES_JSON}")
+        return
+
+    new_series = {
+        'id': series_id,
+        'title': args.title,
+        'shortTitle': short_title,
+        'tagline': args.tagline,
+        'description': args.description or args.tagline,
+        'version': version_dir_name,
+        'language': args.language,
+        'roadmapPath': roadmap_path,
+        'color': args.color,
+        'icon': args.icon,
+        'enabled': True
+    }
+
+    registry['series'].append(new_series)
+    SERIES_JSON.write_text(
+        json.dumps(registry, ensure_ascii=False, indent=2) + '\n',
+        encoding='utf-8'
+    )
+    print(f"✅ series.json 已注册 '{series_id}' 系列")
+    print()
+    print(f"下一步:")
+    print(f"  1. 在 {series_dir}/ 下创建文章(.md 文件)")
+    print(f"  2. 运行 portal-meta-rebuild {series_dir}")
+    print(f"  3. 运行 portal-roadmap-rebuild {series_dir}")
+
+if __name__ == '__main__':
+    main()

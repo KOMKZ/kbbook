@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""
+portal-roadmap-rebuild — 从 _meta.json + .md 文件重建 roadmap JSON
+
+用法:
+  ./portal-roadmap-rebuild <series-dir> [--output <path>]
+
+示例:
+  ./portal-roadmap-rebuild public/docs/zh-CN/quiz-v0.1.0 --output public/roadmap-quiz.json
+
+逻辑:
+  1. 读取系列 _meta.json
+  2. 按 group 生成 stage
+  3. 扫描 group 下的 .md 文件作为 articles
+  4. 提取每个 .md 的 H1 标题和 code
+  5. 输出完整 roadmap JSON
+"""
+
+import sys, os, json, re, argparse
+from pathlib import Path
+from datetime import datetime, timezone
+
+def extract_h1(filepath: Path) -> str:
+    try:
+        content = filepath.read_text(encoding='utf-8')
+        m = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+        if m:
+            return m.group(1).strip()
+    except:
+        pass
+    return filepath.stem
+
+def extract_code(filepath: Path) -> str:
+    """从 H1 提取 [Q001] 格式的 code"""
+    title = extract_h1(filepath)
+    m = re.search(r'\[([^\]]+)\]', title)
+    return m.group(1) if m else filepath.stem[:8]
+
+def scan_articles(group_dir: Path, base_rel: str) -> list:
+    """扫描目录下的 question.md 文件作为 articles(quiz 模式)"""
+    articles = []
+    # Quiz 模式: 只收集 question.md,忽略 answer.md/explanation.md
+    q_files = sorted(
+        [f for f in group_dir.rglob('question.md') if 'article.md' not in f.name],
+        key=lambda f: str(f)
+    )
+    if q_files:
+        # Quiz 系列 — 每个 question.md 是一个 article
+        for f in q_files:
+            rel = str(f.relative_to(group_dir.parent)).replace('\\', '/')
+            slug = rel.replace('.md', '')
+            articles.append({
+                'code': extract_code(f),
+                'title': extract_h1(f).replace(f'[{extract_code(f)}] ', '').strip(),
+                'slug': slug,
+                'published': True,
+                'subItems': []
+            })
+    else:
+        # 普通系列 — 所有 .md 文件都是 articles
+        md_files = sorted(
+            [f for f in group_dir.rglob('*.md') if f.name not in ('index.md', 'article.md')],
+            key=lambda f: f.name
+        )
+        for f in md_files:
+            rel = str(f.relative_to(group_dir.parent)).replace('\\', '/')
+            slug = rel.replace('.md', '')
+            articles.append({
+                'code': extract_code(f),
+                'title': extract_h1(f).replace(f'[{extract_code(f)}] ', '').strip(),
+                'slug': slug,
+                'published': True,
+                'subItems': []
+            })
+    return articles
+
+
+def _make_article(filepath: Path, series_dir: Path) -> dict:
+    """从 .md 文件构造一个 article 条目"""
+    rel = str(filepath.relative_to(series_dir)).replace('\\', '/')
+    slug = rel.replace('.md', '')
+    code = extract_code(filepath)
+    title = extract_h1(filepath)
+    # 去掉 title 中的 [CODE] 前缀
+    if code:
+        title = title.replace(f'[{code}] ', '').replace(f'[{code}]', '').strip()
+    return {
+        'code': code,
+        'title': title,
+        'slug': slug,
+        'published': True,
+        'subItems': []
+    }
+
+
+def build_articles_from_meta(items: list, series_dir: Path) -> list:
+    """
+    Flat layout fallback: 从 _meta.json 的 items 在 series_dir 中查找 .md 文件。
+
+    支持两级结构:
+      - 普通文章: 直接通过 slug 找 .md
+      - L2 group (isGroup: true): 递归处理其 items,同时 L2 group 本身也可对应一篇文章
+    """
+    articles = []
+    for item in items:
+        if item.get('isGroup') and item.get('items'):
+            # L2 group: 递归处理子项
+            sub_articles = build_articles_from_meta(item['items'], series_dir)
+            # L2 group 本身也可能有对应的 .md 文件(作为概览/主篇)
+            group_file = series_dir / f"{item['slug']}.md"
+            if group_file.exists():
+                entry = _make_article(group_file, series_dir)
+                entry['subItems'] = sub_articles
+                articles.append(entry)
+            else:
+                # 没有自己的 .md,子文章直接提升
+                articles.extend(sub_articles)
+        else:
+            # 普通文章: slug → .md 查找
+            md_file = series_dir / f"{item['slug']}.md"
+            if md_file.exists():
+                articles.append(_make_article(md_file, series_dir))
+            else:
+                # 递归搜索子目录
+                found = list(series_dir.rglob(f"{item['slug']}.md"))
+                if found:
+                    articles.append(_make_article(found[0], series_dir))
+    return articles
+
+def build_roadmap(meta_file: Path) -> dict:
+    meta = json.loads(meta_file.read_text(encoding='utf-8'))
+    series_dir = meta_file.parent
+    stages = []
+
+    # 每个顶层 item(isGroup) → 一个 stage
+    for item in meta.get('items', []):
+        if not item.get('isGroup'):
+            continue
+
+        slug = item['slug']
+        group_dir = series_dir / slug
+        if group_dir.is_dir():
+            articles = scan_articles(group_dir, slug)
+        else:
+            # Flat layout: 文件在 series 根目录,_meta.json items 决定归属
+            articles = build_articles_from_meta(item.get('items', []), series_dir)
+
+        # 状态: 有文章 → ✅, 无文章 → 📌
+        status = '✅' if articles else '📌'
+        pub_count = len(articles)
+
+        stages.append({
+            'id': f'quiz-{slug}',
+            'title': item['title'],
+            'status': status,
+            'isBranch': False,
+            'branchOf': None,
+            'hookStart': '',
+            'hookEnd': '',
+            'articles': articles,
+            'articleCount': len(articles),
+            'publishedCount': pub_count,
+            'kpStats': {
+                'total': len(articles),
+                'done': len(articles),
+                'inProgress': 0,
+                'todo': 0,
+                'mastered': 0
+            }
+        })
+
+    total_articles = sum(s['articleCount'] for s in stages)
+    return {
+        'generatedAt': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.000Z'),
+        'stages': stages,
+        'stats': {
+            'stageCount': len(stages),
+            'totalArticles': total_articles,
+            'completedStages': sum(1 for s in stages if s['status'] == '✅'),
+            'inProgressStages': sum(1 for s in stages if s['status'] == '🚧'),
+            'todoStages': sum(1 for s in stages if s['status'] == '📌')
+        }
+    }
+
+def main():
+    parser = argparse.ArgumentParser(description='Rebuild roadmap JSON from _meta.json')
+    parser.add_argument('series_dir', help='系列目录路径')
+    parser.add_argument('--output', '-o', help='输出文件路径(默认: 系列目录同级的 roadmap-{name}.json)')
+    args = parser.parse_args()
+
+    series_dir = Path(args.series_dir).resolve()
+    if not series_dir.is_dir():
+        print(f"错误: 目录不存在 — {series_dir}")
+        sys.exit(1)
+
+    meta_file = series_dir / '_meta.json'
+    if not meta_file.exists():
+        print(f"错误: _meta.json 不存在 — {meta_file}")
+        print("提示: 先运行 portal-meta-rebuild 生成 _meta.json")
+        sys.exit(1)
+
+    roadmap = build_roadmap(meta_file)
+
+    # 确定输出路径
+    if args.output:
+        outfile = Path(args.output)
+    else:
+        # 默认: public/roadmap-{系列名}.json
+        series_name = series_dir.name.replace('-v0.1.0', '').replace('-v0.2.0', '')
+        outfile = series_dir.parent.parent.parent / f'roadmap-{series_name}.json'
+
+    outfile.parent.mkdir(parents=True, exist_ok=True)
+    outfile.write_text(json.dumps(roadmap, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+    print(f"✅ Roadmap 已重建: {outfile}")
+    print(f"   阶段: {roadmap['stats']['stageCount']} (✅{roadmap['stats']['completedStages']} 🚧{roadmap['stats']['inProgressStages']} 📌{roadmap['stats']['todoStages']})")
+    print(f"   文章: {roadmap['stats']['totalArticles']} 篇")
+
+if __name__ == '__main__':
+    main()

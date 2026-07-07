@@ -93,12 +93,14 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
               const tables: Record<string, any[]> = {}
               const tableNames = tempDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
               for (const { values } of tableNames) {
-                for (const [name] of values) {
-                  const data = tempDb.exec(`SELECT * FROM "${name}"`)
+                for (const vals of values) {
+                  const tname = vals[0] as string
+                  if (!tname) continue
+                  const data = tempDb.exec(`SELECT * FROM "${tname}"`)
                   if (data.length) {
-                    tables[name] = data[0].values.map(vals => {
+                    tables[tname] = data[0].values.map((rowVals: any[]) => {
                       const r: Record<string, any> = {}
-                      data[0].columns.forEach((c: string, i: number) => r[c] = vals[i])
+                      data[0].columns.forEach((c: string, i: number) => r[c] = rowVals[i])
                       return r
                     })
                   }

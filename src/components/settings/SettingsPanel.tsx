@@ -148,18 +148,27 @@ const SettingsPanel = () => {
 
   // OSS config
   const [ossCfg, setOssCfg] = useState(loadOssConfig)
+  const [ossSaved, setOssSaved] = useState(loadOssConfig) // last saved snapshot
   const [showSecret, setShowSecret] = useState(false)
+  const isOssDirty = JSON.stringify(ossCfg) !== JSON.stringify(ossSaved)
 
   const updateOssField = (field: keyof typeof OSS_DEFAULTS, value: string) => {
-    const next = { ...ossCfg, [field]: value }
-    setOssCfg(next)
-    saveOssConfig(next)
+    setOssCfg((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const saveOssSettings = () => {
+    saveOssConfig(ossCfg)
+    setOssSaved({ ...ossCfg })
+    // Also persist to native SharedPreferences so Java plugin can read
+    try {
+      localStorage.setItem('kbbook-oss-saved', JSON.stringify(ossCfg))
+    } catch {}
+    setToast({ message: 'OSS 配置已保存', severity: 'success' })
   }
 
   const fillOssDefaults = () => {
     setOssCfg({ ...OSS_DEFAULTS })
-    saveOssConfig({ ...OSS_DEFAULTS })
-    setToast({ message: '已填入默认 OSS 配置', severity: 'success' })
+    setToast({ message: '已填入默认值，请点击「保存配置」', severity: 'success' })
   }
 
   useEffect(() => {
@@ -329,12 +338,23 @@ const SettingsPanel = () => {
                     ),
                   }} />
               </Box>
-              <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+              <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Button variant="contained" size="small"
+                  color={isOssDirty ? 'primary' : 'inherit'}
+                  onClick={saveOssSettings}
+                  disabled={!isOssDirty}>
+                  保存配置{isOssDirty ? ' *' : ' ✓'}
+                </Button>
                 <Button variant="outlined" size="small" startIcon={<ContentCopyIcon />}
                   onClick={fillOssDefaults}>
-                  一键填入默认值
+                  填入默认值
                 </Button>
               </Box>
+              {isOssDirty && (
+                <Typography variant="caption" color="warning.main" sx={{ mt: 1, display: 'block' }}>
+                  ⚠️ 配置已修改，请点击「保存配置」后再同步
+                </Typography>
+              )}
             </Section>
           </>
         )

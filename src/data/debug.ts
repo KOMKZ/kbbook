@@ -36,12 +36,10 @@ export const debugLog = {
   },
 
   info(module: string, message: string, detail?: unknown) {
-    if (!_enabled) return
     this._add('info', module, message, detail)
   },
 
   warn(module: string, message: string, detail?: unknown) {
-    if (!_enabled) return
     this._add('warn', module, message, detail)
   },
 
@@ -61,9 +59,11 @@ export const debugLog = {
     }
     entries.push(entry)
     if (entries.length > MAX_ENTRIES) entries = entries.slice(-MAX_ENTRIES)
-    // Also echo to console for dev tools
-    const fn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log
-    fn(`[${module}] ${message}`, detail ?? '')
+    // Echo to console only when debug toggle is on
+    if (_enabled) {
+      const fn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log
+      fn(`[${module}] ${message}`, detail ?? '')
+    }
   },
 
   getEntries(): LogEntry[] { return [...entries] },

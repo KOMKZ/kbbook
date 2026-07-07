@@ -10,7 +10,6 @@
  * Right content: scrolls independently
  */
 import { useState, useEffect, type ReactNode } from 'react'
-import { useTheme as useMuiTheme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import Box from '@mui/material/Box'
 import List from '@mui/material/List'

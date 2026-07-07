@@ -124,7 +124,11 @@ const OSS_DEFAULTS = {
 function loadOssConfig(): typeof OSS_DEFAULTS {
   try {
     const raw = localStorage.getItem('kbbook-oss-config')
-    if (raw) return { ...OSS_DEFAULTS, ...JSON.parse(raw) }
+    if (raw) {
+      const saved = JSON.parse(raw)
+      // Only use localStorage if it has actual values (not all empty)
+      if (Object.values(saved).some((v: any) => v)) return { ...OSS_DEFAULTS, ...saved }
+    }
   } catch {}
   return { ...OSS_DEFAULTS }
 }
@@ -184,6 +188,18 @@ const SettingsPanel = () => {
   useEffect(() => {
     getWebVersion().then(v => setAppVersion(v)).catch(() => setAppVersion('unknown'))
     fetch('/version.json').then(r => r.json()).then(d => setWebVersion(d.version || '0.1.0')).catch(() => setWebVersion('0.1.0'))
+  }, [])
+
+  // On mount: try to restore OSS config from native SharedPreferences
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('kbbook-oss-config')
+      if (!saved) {
+        // localStorage empty — config might be in native prefs, defaults will show
+        setOssCfg(loadOssConfig())
+        setOssSaved(loadOssConfig())
+      }
+    } catch {}
   }, [])
 
   const isLocal = mode === 'local'

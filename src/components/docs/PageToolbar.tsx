@@ -35,8 +35,31 @@ const PageToolbar = ({ extraButtons, seriesId }: Props) => {
   const navigate = useNavigate()
   const [historyOpen, setHistoryOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const [autoHidden, setAutoHidden] = useState(false)
   const { items, removeEntry, clearAll } = useReadingHistory()
   const { toolbarSize: s } = useToolbarSizeCtx()
+
+  // Auto-hide after inactivity (default 10s, configurable in Settings)
+  const autoHideDelay = parseInt(localStorage.getItem('kbbook-toolbar-autohide') || '10', 10) * 1000
+  useEffect(() => {
+    if (autoHideDelay <= 0) return
+    let timer: ReturnType<typeof setTimeout>
+    const reset = () => {
+      setAutoHidden(false)
+      clearTimeout(timer)
+      timer = setTimeout(() => setAutoHidden(true), autoHideDelay)
+    }
+    reset()
+    window.addEventListener('scroll', reset, { passive: true })
+    window.addEventListener('mousemove', reset)
+    window.addEventListener('touchstart', reset, { passive: true })
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('scroll', reset)
+      window.removeEventListener('mousemove', reset)
+      window.removeEventListener('touchstart', reset)
+    }
+  }, [autoHideDelay])
 
   // Drag
   const [toolbarY, setToolbarY] = useState<number | null>(loadY)
@@ -84,7 +107,7 @@ const PageToolbar = ({ extraButtons, seriesId }: Props) => {
   const bottom = toolbarY != null ? 'auto' : { xs: 16, sm: 24 }
 
   return (
-    <>
+    <Box sx={{ opacity: autoHidden ? 0 : 1, transition: 'opacity 0.5s', pointerEvents: autoHidden ? 'none' : 'auto' }}>
       {/* Collapsed */}
       <Fade in={collapsed}>
         <Box sx={{ position: 'fixed', right: { xs: 8, sm: 16 }, top, bottom, zIndex: 1250, transform: `scale(${s})`, transformOrigin: 'right bottom' }}>
@@ -155,7 +178,7 @@ const PageToolbar = ({ extraButtons, seriesId }: Props) => {
 
       <ReadingHistoryDialog open={historyOpen} onClose={() => setHistoryOpen(false)}
         items={items} onRemove={removeEntry} onClearAll={clearAll} />
-    </>
+    </Box>
   )
 }
 

@@ -5,6 +5,7 @@ import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Chip from '@mui/material/Chip'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import { useTheme } from '@mui/material/styles'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -23,7 +24,7 @@ const SeriesCard = ({ series, consumeDragEnded, editMode }: SeriesCardProps) => 
   const enabled = s.enabled
 
   const sortable = useSortable({ id: s.id, disabled: !enabled || !editMode })
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = sortable
 
   const handleClick = () => {
     if (consumeDragEnded()) return
@@ -116,18 +117,35 @@ const SeriesCard = ({ series, consumeDragEnded, editMode }: SeriesCardProps) => 
     <Box
       ref={setNodeRef}
       style={style}
-      {...(editMode ? { ...attributes, ...listeners } : {})}
       onClick={handleClick}
       sx={{
-        cursor: editMode ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-        touchAction: editMode ? 'none' : 'manipulation',
-        '&:hover': enabled && !isDragging
-          ? {}
-          : {},
+        cursor: editMode ? 'default' : 'pointer',
+        position: 'relative',
       }}
     >
+      {/* Drag handle — only visible in edit mode, only this initiates drag */}
+      {editMode && (
+        <Box
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          sx={{
+            position: 'absolute',
+            top: 4,
+            right: 4,
+            zIndex: 2,
+            cursor: isDragging ? 'grabbing' : 'grab',
+            p: 0.5,
+            borderRadius: 1,
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            touchAction: 'none',
+            '&:hover': { bgcolor: 'action.hover' },
+          }}
+        >
+          <DragIndicatorIcon fontSize="small" sx={{ color: 'text.disabled' }} />
+        </Box>
+      )}
       {content}
     </Box>
   )

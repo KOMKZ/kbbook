@@ -22,7 +22,7 @@ const SeriesListItem = ({ series, consumeDragEnded, editMode }: Props) => {
   const enabled = s.enabled
 
   const sortable = useSortable({ id: s.id, disabled: !enabled || !editMode })
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = sortable
 
   const handleClick = () => {
     if (consumeDragEnded()) return
@@ -41,7 +41,6 @@ const SeriesListItem = ({ series, consumeDragEnded, editMode }: Props) => {
     <Box
       ref={setNodeRef}
       style={style}
-      {...(editMode ? { ...attributes, ...listeners } : {})}
       onClick={handleClick}
       sx={{
         display: 'flex',
@@ -53,17 +52,24 @@ const SeriesListItem = ({ series, consumeDragEnded, editMode }: Props) => {
         borderColor: 'divider',
         cursor: enabled ? 'pointer' : 'not-allowed',
         opacity: enabled ? 1 : 0.7,
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-        touchAction: editMode ? 'none' : 'manipulation',
         transition: 'background 0.15s',
         '&:hover': enabled ? { bgcolor: muiTheme.palette.mode === 'dark' ? 'rgba(96,165,250,0.05)' : 'rgba(80,70,229,0.03)' } : {},
         '&:last-child': { borderBottom: 0 },
       }}
     >
-      {/* Drag handle — only visible in edit mode */}
+      {/* Drag handle — only visible in edit mode, only this initiates drag */}
       {editMode && (
-        <Box sx={{ p: 0.5, mx: -0.5, display: 'flex', alignItems: 'center', touchAction: 'none' }}>
+        <Box
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          sx={{
+            p: 0.5, mx: -0.5, display: 'flex', alignItems: 'center',
+            cursor: isDragging ? 'grabbing' : 'grab',
+            touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none',
+            borderRadius: 1, '&:hover': { bgcolor: 'action.hover' },
+          }}
+        >
           <DragIndicatorIcon sx={{ fontSize: 20, color: 'text.disabled', flexShrink: 0 }} />
         </Box>
       )}

@@ -248,10 +248,16 @@ const SettingsPanel = () => {
               </Box>
             </Section>
             <ToolbarSizeSection />
-            <Section title="外观" subtitle="主题、字体大小等（即将推出）">
-              <Typography variant="body2" color="text.disabled">
-                更多外观设置将在后续版本中添加。
-              </Typography>
+            <Section title="外观" subtitle="主题、工具栏自动隐藏">
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2" color="text.secondary">工具栏无操作后自动隐藏（秒，0=不隐藏）：</Typography>
+                <TextField size="small" type="number" sx={{ width: 70 }}
+                  defaultValue={localStorage.getItem('kbbook-toolbar-autohide') || '10'}
+                  onChange={(e) => { const v = Math.max(0, parseInt(e.target.value) || 0); localStorage.setItem('kbbook-toolbar-autohide', String(v)); setToast({message: `工具栏自动隐藏: ${v === 0 ? '关闭' : v + '秒'}`, severity:'success'}); }}
+                  inputProps={{ min: 0, max: 300, step: 5 }}
+                />
+                <Typography variant="caption" color="text.secondary">秒</Typography>
+              </Box>
             </Section>
           </>
         )

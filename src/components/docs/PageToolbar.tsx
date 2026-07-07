@@ -18,13 +18,14 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import ReadingHistoryDialog from './ReadingHistoryDialog'
 import { useReadingHistory } from '../../hooks/useReadingHistory'
 import { useToolbarSizeCtx } from '../../contexts/ToolbarSizeContext'
+import { getPreferencesRepo } from '@/data/bridge.js'
 
 const KEY_Y = 'lz-pagetoolbar-y'
 
 function loadY(): number | null {
   try { const v = localStorage.getItem(KEY_Y); return v ? parseInt(v) : null } catch { return null }
 }
-function saveY(y: number) { try { localStorage.setItem(KEY_Y, String(y)) } catch {} }
+function saveY(y: number) { try { localStorage.setItem(KEY_Y, String(y)); getPreferencesRepo()?.set(KEY_Y, y) } catch {} }
 
 interface Props {
   extraButtons?: React.ReactNode

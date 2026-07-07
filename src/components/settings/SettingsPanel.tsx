@@ -28,6 +28,7 @@ import Paper from '@mui/material/Paper'
 import CircularProgress from '@mui/material/CircularProgress'
 import LinearProgress from '@mui/material/LinearProgress'
 import CloudSyncIcon from '@mui/icons-material/CloudSync'
+import { getPreferencesRepo } from '@/data/bridge.js'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
@@ -139,7 +140,7 @@ function loadOssConfig(): typeof OSS_DEFAULTS {
 }
 
 function saveOssConfig(cfg: typeof OSS_DEFAULTS) {
-  try { localStorage.setItem('kbbook-oss-config', JSON.stringify(cfg)) } catch {}
+  try { localStorage.setItem('kbbook-oss-config', JSON.stringify(cfg)); getPreferencesRepo()?.set('kbbook-oss-config', cfg) } catch {}
 }
 
 // ============================================================
@@ -260,10 +261,27 @@ const SettingsPanel = () => {
                 <Typography variant="body2" color="text.secondary">工具栏无操作后自动隐藏（秒，0=不隐藏）：</Typography>
                 <TextField size="small" type="number" sx={{ width: 70 }}
                   defaultValue={localStorage.getItem('kbbook-toolbar-autohide') || '10'}
-                  onChange={(e) => { const v = Math.max(0, parseInt(e.target.value) || 0); localStorage.setItem('kbbook-toolbar-autohide', String(v)); setToast({message: `工具栏自动隐藏: ${v === 0 ? '关闭' : v + '秒'}`, severity:'success'}); }}
+                  onChange={(e) => { const v = Math.max(0, parseInt(e.target.value) || 0); localStorage.setItem('kbbook-toolbar-autohide', String(v)); getPreferencesRepo()?.set('kbbook-toolbar-autohide', String(v)); setToast({message: `工具栏自动隐藏: ${v === 0 ? '关闭' : v + '秒'}`, severity:'success'}); }}
                   inputProps={{ min: 0, max: 300, step: 5 }}
                 />
                 <Typography variant="caption" color="text.secondary">秒</Typography>
+              </Box>
+            </Section>
+            <Section title="存储引擎" subtitle="LocalStorage 轻量无需加载；SQLite 支持复杂查询（切换后需刷新生效）">
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <select
+                  defaultValue={localStorage.getItem('kbbook-storage-driver') || 'localstorage'}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    localStorage.setItem('kbbook-storage-driver', v)
+                    getPreferencesRepo()?.set('kbbook-storage-driver', v)
+                    setToast({ message: `存储引擎已切换为 ${v === 'sqljs' ? 'SQLite' : 'LocalStorage'}，刷新后生效`, severity: 'success' })
+                  }}
+                  style={{ padding: '6px 12px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem' }}
+                >
+                  <option value="localstorage">LocalStorage（默认）</option>
+                  <option value="sqljs">SQLite (sql.js WASM)</option>
+                </select>
               </Box>
             </Section>
           </>
@@ -459,7 +477,7 @@ const SettingsPanel = () => {
               设置
             </Typography>
           )}
-          <IconButton size="small" onClick={() => setSidebarOpen((v) => { const n = !v; try { localStorage.setItem("kbbook-settings-sidebar", n ? "1" : "0") } catch {}; return n })}>
+          <IconButton size="small" onClick={() => setSidebarOpen((v) => { const n = !v; try { localStorage.setItem("kbbook-settings-sidebar", n ? "1" : "0"); getPreferencesRepo()?.set("kbbook-settings-sidebar", n ? "1" : "0") } catch {}; return n })}>
             {sidebarOpen ? <ChevronLeftIcon fontSize="small" /> : <MenuIcon fontSize="small" />}
           </IconButton>
         </Box>

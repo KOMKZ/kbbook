@@ -21,7 +21,38 @@ import {
   AuditLogRepo, PreferencesRepo,
 } from '@/data/index.js'
 import type { IStorageDriver } from '@/data/driver/types.js'
+import { MetaSyncService } from '@/data/sync/metasync.js'
+import type { SeriesJsonFile, MetaJsonFile } from '@/data/sync/metasync.js'
 import { debugLog } from '@/data/debug.js'
+
+/** First-launch: if DB is empty, sync from bundled JSON files. */
+async function initFromFiles(d: IStorageDriver) {
+  const cnt = await d.query<{c:number}>('SELECT COUNT(*) as c FROM articles')
+  if (cnt[0]?.c && cnt[0].c > 0) return // already has data
+  debugLog.info('storage', '空数据库，从文件初始化...')
+  try {
+    const sync = new MetaSyncService(d)
+    const seriesResp = await fetch('/docs/series.json')
+    if (!seriesResp.ok) { debugLog.warn('sync', 'series.json not found'); return }
+    const seriesFile: SeriesJsonFile = await seriesResp.json()
+    const sr = await sync.syncSeries(seriesFile)
+    debugLog.info('storage', `series synced: ${sr.series}`)
+    for (const s of seriesFile.series) {
+      if (!s.enabled) continue
+      const lang = (s as any).language || 'zh-CN'
+      const version = (s as any).version || 'v0.1.0'
+      try {
+        const metaResp = await fetch(`/docs/${lang}/${version}/_meta.json`)
+        if (!metaResp.ok) continue
+        const metaFile: MetaJsonFile = await metaResp.json()
+        const mr = await sync.syncMeta(s.id, metaFile)
+        debugLog.info('storage', `${s.id}: ${mr.groups} groups, ${mr.articles} articles`)
+      } catch { /* skip broken */ }
+    }
+  } catch (e) {
+    debugLog.error('storage', '文件初始化失败', { error: (e as Error).message })
+  }
+}
 
 interface StorageState {
   driver: IStorageDriver | null
@@ -76,6 +107,9 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         const prevVersion = await runner.currentVersion()
         const newVersion = await runner.run()
         debugLog.info('migration', `schema ${prevVersion} → ${newVersion}`)
+
+        // First launch: if DB is empty, sync from bundled JSON files
+        await initFromFiles(d)
 
         if (cancelled) { await d.close(); return }
 

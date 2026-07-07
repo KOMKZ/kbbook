@@ -27,6 +27,9 @@ import Paper from '@mui/material/Paper'
 import CircularProgress from '@mui/material/CircularProgress'
 import LinearProgress from '@mui/material/LinearProgress'
 import CloudSyncIcon from '@mui/icons-material/CloudSync'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import WifiIcon from '@mui/icons-material/Wifi'
 import WifiOffIcon from '@mui/icons-material/WifiOff'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
@@ -92,12 +95,37 @@ function ToolbarSizeSection() {
 const NAV_ITEMS = [
   { id: 'general', label: '通用',   icon: <SettingsIcon fontSize="small" /> },
   { id: 'sync',    label: '同步',   icon: <SyncIcon fontSize="small" /> },
+  { id: 'oss',     label: 'OSS',    icon: <CloudSyncIcon fontSize="small" /> },
   { id: 'version', label: '版本',   icon: <InfoIcon fontSize="small" /> },
 ] as const
 
 type NavId = (typeof NAV_ITEMS)[number]['id']
 
 const SIDEBAR_WIDTH = 180
+
+// ============================================================
+// OSS Config — defaults + localStorage persistence
+// ============================================================
+
+const OSS_DEFAULTS = {
+  endpoint: 'https://oss-cn-shenzhen.aliyuncs.com',
+  bucket: '',
+  path: '',
+  accessKeyId: '',
+  accessKeySecret: '',
+}
+
+function loadOssConfig(): typeof OSS_DEFAULTS {
+  try {
+    const raw = localStorage.getItem('kbbook-oss-config')
+    if (raw) return { ...OSS_DEFAULTS, ...JSON.parse(raw) }
+  } catch {}
+  return { ...OSS_DEFAULTS }
+}
+
+function saveOssConfig(cfg: typeof OSS_DEFAULTS) {
+  try { localStorage.setItem('kbbook-oss-config', JSON.stringify(cfg)) } catch {}
+}
 
 // ============================================================
 // SettingsPanel
@@ -111,6 +139,22 @@ const SettingsPanel = () => {
   const [progress, setProgress] = useState<SyncProgress | null>(null)
   const [webVersion, setWebVersion] = useState<string>('...')
   const [appVersion, setAppVersion] = useState<string>('...')
+
+  // OSS config
+  const [ossCfg, setOssCfg] = useState(loadOssConfig)
+  const [showSecret, setShowSecret] = useState(false)
+
+  const updateOssField = (field: keyof typeof OSS_DEFAULTS, value: string) => {
+    const next = { ...ossCfg, [field]: value }
+    setOssCfg(next)
+    saveOssConfig(next)
+  }
+
+  const fillOssDefaults = () => {
+    setOssCfg({ ...OSS_DEFAULTS })
+    saveOssConfig({ ...OSS_DEFAULTS })
+    setToast({ message: '已填入默认 OSS 配置', severity: 'success' })
+  }
 
   useEffect(() => {
     const unlisten = listenSyncProgress((data) => setProgress(data))
@@ -244,6 +288,47 @@ const SettingsPanel = () => {
                 onClick={handleSync} disabled={isSyncing} fullWidth>
                 {isSyncing ? '同步中...' : '立即同步'}
               </Button>
+            </Section>
+          </>
+        )
+
+      case 'oss':
+        return (
+          <>
+            <Section title="OSS 配置" subtitle="对象存储连接参数（默认值来自系统配置，修改后优先使用你的值）"
+              icon={<CloudSyncIcon color="primary" />}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <TextField label="Endpoint" size="small" fullWidth
+                  value={ossCfg.endpoint}
+                  onChange={(e) => updateOssField('endpoint', e.target.value)}
+                  placeholder="https://oss-cn-shenzhen.aliyuncs.com" />
+                <TextField label="Bucket" size="small" fullWidth
+                  value={ossCfg.bucket}
+                  onChange={(e) => updateOssField('bucket', e.target.value)} />
+                <TextField label="Path (Prefix)" size="small" fullWidth
+                  value={ossCfg.path}
+                  onChange={(e) => updateOssField('path', e.target.value)} />
+                <TextField label="AccessKey ID" size="small" fullWidth
+                  value={ossCfg.accessKeyId}
+                  onChange={(e) => updateOssField('accessKeyId', e.target.value)} />
+                <TextField label="AccessKey Secret" size="small" fullWidth
+                  type={showSecret ? 'text' : 'password'}
+                  value={ossCfg.accessKeySecret}
+                  onChange={(e) => updateOssField('accessKeySecret', e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <IconButton size="small" onClick={() => setShowSecret(!showSecret)} edge="end">
+                        {showSecret ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                      </IconButton>
+                    ),
+                  }} />
+              </Box>
+              <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                <Button variant="outlined" size="small" startIcon={<ContentCopyIcon />}
+                  onClick={fillOssDefaults}>
+                  一键填入默认值
+                </Button>
+              </Box>
             </Section>
           </>
         )

@@ -57,3 +57,4 @@ android/app/*.iml
 # App release output
 release/
 
+.env

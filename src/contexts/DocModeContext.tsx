@@ -38,7 +38,8 @@ interface DocModeContextValue extends DocModeState {
 
 const DocModeContext = createContext<DocModeContextValue | null>(null)
 
-const DEFAULT_NETWORK_URL = 'http://localhost:3004'
+declare const __NETWORK_URL__: string
+const DEFAULT_NETWORK_URL = (typeof __NETWORK_URL__ !== 'undefined' && __NETWORK_URL__) || 'http://localhost:3004'
 
 export function DocModeProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DocModeState>({

@@ -66,6 +66,7 @@ export interface LZPortalSyncPlugin {
   checkWebUpdate(): Promise<WebUpdateResult>
   getWebVersion(): Promise<WebVersionResult>
   addListener(eventName: 'syncProgress', callback: (data: SyncProgress) => void): Promise<PluginListenerHandle>
+  saveOssConfig(options: { endpoint?: string; bucket?: string; path?: string; accessKeyId?: string; accessKeySecret?: string }): Promise<void>
 }
 
 const LZPortalSync = registerPlugin<LZPortalSyncPlugin>('LZPortalSync')
@@ -179,6 +180,13 @@ export const setNetworkUrl = async (url: string): Promise<void> => {
 export const checkWebUpdate = async (): Promise<WebUpdateResult> => {
   if (isNative()) return LZPortalSync.checkWebUpdate()
   return { updateAvailable: false, reason: 'Not in app' }
+}
+
+export const saveOssConfig = async (cfg: OssConfig): Promise<void> => {
+  if (isNative()) {
+    await LZPortalSync.saveOssConfig(cfg)
+  }
+  // Web mode: no-op (config stored in localStorage by caller)
 }
 
 export const getWebVersion = async (): Promise<string> => {

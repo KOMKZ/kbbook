@@ -41,7 +41,7 @@ import SyncIcon from '@mui/icons-material/Sync'
 import InfoIcon from '@mui/icons-material/Info'
 import { useDocMode } from '../../contexts/DocModeContext'
 import { useToolbarSizeCtx } from '../../contexts/ToolbarSizeContext'
-import { listenSyncProgress, checkWebUpdate, getWebVersion, type SyncProgress } from '../../plugins/lz-portal-sync'
+import { listenSyncProgress, checkWebUpdate, getWebVersion, saveOssConfig as saveOssConfigNative, type SyncProgress } from '../../plugins/lz-portal-sync'
 import { siteConfig } from '../../config/site'
 
 declare const __BUILD_TIME__: string
@@ -156,14 +156,12 @@ const SettingsPanel = () => {
     setOssCfg((prev) => ({ ...prev, [field]: value }))
   }
 
-  const saveOssSettings = () => {
+  const saveOssSettings = async () => {
     saveOssConfig(ossCfg)
+    // Also persist to native SharedPreferences so Java plugin uses it
+    await saveOssConfigNative(ossCfg).catch(() => {})
     setOssSaved({ ...ossCfg })
-    // Also persist to native SharedPreferences so Java plugin can read
-    try {
-      localStorage.setItem('kbbook-oss-saved', JSON.stringify(ossCfg))
-    } catch {}
-    setToast({ message: 'OSS 配置已保存', severity: 'success' })
+    setToast({ message: 'OSS 配置已保存（同步将使用新配置）', severity: 'success' })
   }
 
   const fillOssDefaults = () => {

@@ -105,7 +105,6 @@ function ToolbarSizeSection() {
 const NAV_ITEMS = [
   { id: 'general', label: '通用',   icon: <SettingsIcon fontSize="small" /> },
   { id: 'sync',    label: '同步',   icon: <SyncIcon fontSize="small" /> },
-  { id: 'oss',     label: 'OSS',    icon: <CloudSyncIcon fontSize="small" /> },
   { id: 'version', label: '版本',   icon: <InfoIcon fontSize="small" /> },
 ] as const
 
@@ -311,19 +310,14 @@ const SettingsPanel = () => {
                 {isSyncing ? '同步中...' : '立即同步'}
               </Button>
             </Section>
-          </>
-        )
 
-      case 'oss':
-        return (
-          <>
-            <Section title="OSS 配置" subtitle="对象存储连接参数（默认值来自系统配置，修改后优先使用你的值）"
+            {/* OSS 配置 */}
+            <Section title="OSS 配置" subtitle="对象存储连接参数"
               icon={<CloudSyncIcon color="primary" />}>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 <TextField label="Endpoint" size="small" fullWidth
                   value={ossCfg.endpoint}
-                  onChange={(e) => updateOssField('endpoint', e.target.value)}
-                  placeholder="https://oss-cn-shenzhen.aliyuncs.com" />
+                  onChange={(e) => updateOssField('endpoint', e.target.value)} />
                 <TextField label="Bucket" size="small" fullWidth
                   value={ossCfg.bucket}
                   onChange={(e) => updateOssField('bucket', e.target.value)} />
@@ -363,48 +357,9 @@ const SettingsPanel = () => {
                 </Typography>
               )}
             </Section>
-
-            {/* OSS data sync — pull only from portal/app */}
-            <Section
-              title="数据同步 (OSS)"
-              subtitle="从 OSS 拉取最新文章数据（PC 端写入 → App 拉取同步）"
-              icon={<CloudSyncIcon color="secondary" />}
-            >
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Button variant="contained" size="small"
-                  onClick={async () => {
-                    try {
-                      const { getDriver, getPreferencesRepo } = await import('@/data/bridge.js')
-                      const driver = getDriver()
-                      const prefs = getPreferencesRepo()
-                      if (!driver || !prefs) { setToast({ message: '存储未就绪', severity: 'error' }); return }
-                      const ossCfg = await prefs.get<Record<string, string>>('kbbook-oss-config')
-                      if (!ossCfg?.bucket) { setToast({ message: '请先在上方配置 OSS 参数', severity: 'error' }); return }
-                      setToast({ message: '正在从 OSS 拉取...', severity: 'success' })
-                      const { pullLatest, mergeFromOss } = await import('@/data/sync/oss.js')
-                      const { exportDatabase, importDatabase } = await import('@/data/migration/exporter.js')
-                      const result = await pullLatest({
-                        bucket: ossCfg.bucket, region: ossCfg.region || 'oss-cn-hangzhou',
-                        accessKeyId: ossCfg.accessKeyId, accessKeySecret: ossCfg.accessKeySecret,
-                        path: ossCfg.path,
-                      })
-                      if (!result.success || !result.dump) {
-                        setToast({ message: `拉取失败: ${result.error}`, severity: 'error' }); return
-                      }
-                      const localDump = await exportDatabase(driver)
-                      const merged = mergeFromOss(localDump, result.dump)
-                      await importDatabase(driver, merged)
-                      setToast({ message: `同步完成 (${((result.sizeBytes || 0) / 1024).toFixed(1)} KB)`, severity: 'success' })
-                    } catch (e) { setToast({ message: '同步异常: ' + (e as Error).message, severity: 'error' }) }
-                  }}
-                >从 OSS 拉取同步</Button>
-              </Box>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                拉取最新文章数据（系列/目录/文章）。本地阅读记录和偏好设置不会覆盖。
-              </Typography>
-            </Section>
           </>
         )
+
 
       case 'version':
         return (

@@ -163,8 +163,8 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       preferences: new PreferencesRepo(d),
       backup: new BackupManager(),
     }
-    // Register bridge for non-React consumers (usePersistentState, etc.)
-    setStorageBridge(r.preferences)
+    // Register bridge for non-React consumers (usePersistentState, OSS sync, etc.)
+    setStorageBridge(r.preferences, state.driver!)
     return r
   }, [state.driver, state.ready])
 

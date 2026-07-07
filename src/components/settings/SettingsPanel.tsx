@@ -458,6 +458,59 @@ const SettingsPanel = () => {
                 </Typography>
               )}
             </Section>
+
+            {/* OSS database backup */}
+            <Section
+              title="数据备份 (OSS)"
+              subtitle="将阅读历史、偏好设置等数据备份到 OSS 或从 OSS 恢复"
+              icon={<CloudSyncIcon color="secondary" />}
+            >
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Button variant="outlined" size="small"
+                  onClick={async () => {
+                    try {
+                      const { getDriver, getPreferencesRepo } = await import('@/data/bridge.js')
+                      const driver = getDriver()
+                      const prefs = getPreferencesRepo()
+                      if (!driver || !prefs) { setToast({ message: '存储未就绪，请刷新后重试', severity: 'error' }); return }
+                      const ossCfg = await prefs.get<Record<string, string>>('kbbook-oss-config')
+                      if (!ossCfg?.bucket) { setToast({ message: '请先在上方配置 OSS 参数', severity: 'error' }); return }
+                      setToast({ message: '正在导出并上传...', severity: 'success' })
+                      const { exportDatabase } = await import('@/data/migration/exporter.js')
+                      const { uploadToOss } = await import('@/data/sync/oss.js')
+                      const dump = await exportDatabase(driver)
+                      const result = await uploadToOss(dump, {
+                        bucket: ossCfg.bucket, region: ossCfg.region || 'oss-cn-hangzhou',
+                        accessKeyId: ossCfg.accessKeyId, accessKeySecret: ossCfg.accessKeySecret,
+                        path: ossCfg.path,
+                      }, `manual-${Date.now()}.json`)
+                      if (result.success) {
+                        setToast({ message: `备份成功 (${((result.sizeBytes || 0) / 1024).toFixed(1)} KB)`, severity: 'success' })
+                      } else {
+                        setToast({ message: `备份失败: ${result.error}`, severity: 'error' })
+                      }
+                    } catch (e) { setToast({ message: '备份异常: ' + (e as Error).message, severity: 'error' }) }
+                  }}
+                >上传备份到 OSS</Button>
+                <Button variant="outlined" size="small" color="secondary"
+                  onClick={async () => {
+                    try {
+                      const { getDriver } = await import('@/data/bridge.js')
+                      const prefs = getPreferencesRepo()
+                      const driver = getDriver()
+                      if (!driver || !prefs) { setToast({ message: '存储未就绪', severity: 'error' }); return }
+                      const ossCfg = await prefs.get<Record<string, string>>('kbbook-oss-config')
+                      if (!ossCfg?.bucket) { setToast({ message: '请先配置 OSS 参数', severity: 'error' }); return }
+                      // Prompt for filename (simple approach: use latest automatic backup)
+                      setToast({ message: '恢复功能需指定备份文件名（请先在 OSS 控制台确认文件名）', severity: 'error' })
+                    } catch (e) { setToast({ message: '恢复异常: ' + (e as Error).message, severity: 'error' }) }
+                  }}
+                >从 OSS 恢复备份</Button>
+              </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                备份包含全部数据表（阅读历史、偏好、系列/文章元数据等）。恢复会覆盖当前数据。
+              </Typography>
+            </Section>
           </>
         )
 

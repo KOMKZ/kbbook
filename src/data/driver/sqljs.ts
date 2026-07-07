@@ -2,7 +2,7 @@
  * SqlJsDriver — IStorageDriver implementation using sql.js (SQLite compiled to WASM).
  *
  * Node: loads WASM binary from node_modules.
- * Browser/Vite: no config needed — Vite bundles WASM automatically.
+ * Browser/Vite: uses ?url import so Vite bundles the WASM file.
  */
 
 import type { IStorageDriver, BindValue, ExecResult, DatabaseDump } from './types.js'
@@ -21,16 +21,24 @@ export class SqlJsDriver implements IStorageDriver {
   async open(): Promise<void> {
     const initSqlJs = (await import('sql.js')).default
 
-    // Node: load WASM binary. Browser/Vite: pass undefined (Vite bundles WASM).
-    let wasmBinary: Uint8Array | undefined
+    // Node: load WASM binary directly
+    let sqlConfig: Record<string, unknown> | undefined
     try {
       const { readFileSync } = await import('node:fs')
       const { createRequire } = await import('node:module')
       const req = createRequire(import.meta.url)
-      wasmBinary = readFileSync(req.resolve('sql.js/dist/sql-wasm.wasm'))
-    } catch {}
+      sqlConfig = { wasmBinary: readFileSync(req.resolve('sql.js/dist/sql-wasm.wasm')) }
+    } catch {
+      // Browser/Vite: use ?url import to get bundled WASM URL
+      try {
+        const wasm = await import('sql.js/dist/sql-wasm.wasm?url')
+        sqlConfig = { locateFile: () => wasm.default }
+      } catch {
+        // Absolute fallback: let sql.js find it
+      }
+    }
 
-    this._SQL = wasmBinary ? await initSqlJs({ wasmBinary }) : await initSqlJs()
+    this._SQL = sqlConfig ? await initSqlJs(sqlConfig) : await initSqlJs()
 
     let data: Uint8Array | undefined
     if (typeof globalThis.navigator?.storage?.getDirectory === 'function') {

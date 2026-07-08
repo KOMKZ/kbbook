@@ -12,6 +12,7 @@
  */
 
 import type { DatabaseDump } from '../driver/types.js'
+import { debugLog } from '../debug.js'
 
 // ── Table classification ────────────────────────────────────────────────────
 
@@ -91,15 +92,24 @@ export async function pullLatest(config: OssConfig): Promise<OssResult & { dump?
   const base = config.path || 'lz-learn-portal-sqllite-data'
   const key = `${base}/kbdata/latest.json`
   const url = ossUrl(config.bucket, config.region, key)
+  debugLog.info('oss', `pullLatest: ${url}`)
   try {
     const auth = await ossSign('GET', key, config.bucket, config.accessKeyId, config.accessKeySecret)
     const resp = await fetch(url, { headers: { 'Date': new Date().toUTCString(), 'Authorization': auth } })
-    if (!resp.ok) return { success: false, error: `OSS ${resp.status}` }
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '')
+      debugLog.error('oss', `pullLatest failed: ${resp.status}`, errText.substring(0, 300))
+      return { success: false, error: `OSS ${resp.status}` }
+    }
     const text = await resp.text()
     const dump: DatabaseDump = JSON.parse(text)
+    const rows = Object.values(dump.tables).reduce((s, r) => s + r.length, 0)
+    debugLog.info('oss', `pullLatest OK: ${Object.keys(dump.tables).length} tables, ${rows} rows, ${text.length} bytes`)
     return { success: true, key, sizeBytes: text.length, dump }
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) }
+    const msg = err instanceof Error ? err.message : String(err)
+    debugLog.error('oss', `pullLatest error: ${msg}`, url)
+    return { success: false, error: msg }
   }
 }
 
@@ -150,7 +160,7 @@ export async function uploadSnapshot(dump: DatabaseDump, config: OssConfig): Pro
     // Also update latest.json
     const lk = `${base}/kbdata/latest.json`
     const la = await ossSign('PUT', lk, config.bucket, config.accessKeyId, config.accessKeySecret)
-    await fetch(ossUrl(config.bucket, config.region, lk, config.endpoint), {
+    await fetch(ossUrl(config.bucket, config.region, lk), {
       method: 'PUT', headers: { 'Content-Type': 'application/json', 'Date': new Date().toUTCString(), 'Authorization': la }, body,
     })
     return { success: true, key, sizeBytes: body.length }

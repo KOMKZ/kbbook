@@ -241,3 +241,4 @@ samp {
   }
 }
 mark:hover .hl-del-btn{display:inline-block!important}
+.kb-hl-mark:hover .kb-hl-del{display:inline-block!important}

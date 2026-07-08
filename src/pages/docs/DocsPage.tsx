@@ -177,7 +177,23 @@ const DocsPage = () => {
     m.className = 'kb-hl-mark'
     m.dataset.hlColor = color
     if (id != null) m.dataset.hlId = String(id)
-    m.style.cssText = `background:${BG[color] || BG.yellow};border-radius:2px;padding:0 1px;cursor:pointer`
+    m.style.cssText = `background:${BG[color] || BG.yellow};border-radius:2px;padding:0 1px;cursor:default;position:relative`
+    // Delete button (hidden, shown on mark hover via CSS)
+    const del = document.createElement('span')
+    del.className = 'kb-hl-del'
+    del.textContent = '×'
+    del.style.cssText = 'display:none;position:absolute;top:-7px;right:-5px;width:16px;height:16px;border-radius:50%;background:#ef4444;color:#fff;font-size:11px;line-height:16px;text-align:center;cursor:pointer;z-index:1'
+    del.addEventListener('click', (ev) => {
+      ev.stopPropagation()
+      const mark = (ev.target as HTMLElement).closest('.kb-hl-mark') as HTMLElement | null
+      if (!mark) return
+      const mid = Number(mark.dataset.hlId)
+      if (!mid) return
+      const p = mark.parentNode
+      if (p) { while (mark.firstChild) p.insertBefore(mark.firstChild, mark); p.removeChild(mark); p.normalize() }
+      hl.remove(mid)
+    })
+    m.appendChild(del)
     return m
   }
 
@@ -215,8 +231,12 @@ const DocsPage = () => {
   }
 
   // Restore highlight marks after content renders using serialized ranges
+  const restoreDone = useRef(false)
   useEffect(() => {
-    if (!content || hl.highlights.length === 0) return
+    if (!content || hl.highlights.length === 0) { restoreDone.current = false; return }
+    // Only restore once per content+highlights combination
+    const key = `${content.length}-${hl.highlights.length}`
+    if (restoreDone.current === key as any) return
     const timer = setTimeout(() => {
       const root = document.getElementById('article-content')
       if (!root) return
@@ -232,7 +252,8 @@ const DocsPage = () => {
           applyMark(r, h.color, h.id)
         } catch {}
       }
-    }, 300)
+      restoreDone.current = key as any
+    }, 500)
     return () => clearTimeout(timer)
   }, [content, hl.highlights])
 
@@ -770,16 +791,8 @@ const DocsPage = () => {
                 }
               })
             }}
-            // Click on mark → delete (like rong-admin-ui popover)
-            onClick={(e) => {
-              const mark = (e.target as HTMLElement).closest('.kb-hl-mark') as HTMLElement | null
-              if (!mark) return
-              const id = Number(mark.dataset.hlId)
-              if (!id) return
-              const p = mark.parentNode
-              if (p) { while (mark.firstChild) p.insertBefore(mark.firstChild, mark); p.removeChild(mark); p.normalize() }
-              hl.remove(id)
-            }}
+            // Hover on mark → show delete button; click × to delete
+            // (onClick removed — delete only via × button)
           >
             {loading ? (
               <LoadingSkeleton />

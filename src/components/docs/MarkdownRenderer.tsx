@@ -204,7 +204,7 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
   } = useMermaidZoom()
 
   // Mermaid PNG cache (tablet/mobile only, PC falls through)
-  const { getMermaidPng, cacheSvgLater, isNative: isMermaidCacheNative } = useMermaidCache()
+  const { getMermaidPng, cacheSvgLater } = useMermaidCache()
 
   // Mermaid 初始化
   useEffect(() => {

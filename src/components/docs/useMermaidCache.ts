@@ -69,8 +69,9 @@ async function cacheGet(key: string): Promise<Blob | null> {
 }
 
 /** Convert SVG text to PNG Blob via canvas. */
-function svgToPngBlob(svgText: string, scale = 2): Promise<Blob> {
+function svgToPngBlob(svgText: string): Promise<Blob> {
   return new Promise((resolve, reject) => {
+    const scale = Math.max(2, (window.devicePixelRatio || 2) * 2) // 2x minimum, 4x on 2x screens
     const img = new Image()
     const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' })
     const url = URL.createObjectURL(svgBlob)
@@ -81,12 +82,14 @@ function svgToPngBlob(svgText: string, scale = 2): Promise<Blob> {
       canvas.width = w; canvas.height = h
       const ctx = canvas.getContext('2d')
       if (!ctx) { URL.revokeObjectURL(url); reject(new Error('no 2d context')); return }
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
       ctx.drawImage(img, 0, 0, w, h)
       canvas.toBlob(blob => {
         URL.revokeObjectURL(url)
         if (blob) resolve(blob)
         else reject(new Error('toBlob failed'))
-      }, 'image/png')
+      }, 'image/png', 1.0) // max quality
     }
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('svg load failed')) }
     img.src = url

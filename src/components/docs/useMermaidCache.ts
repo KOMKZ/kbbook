@@ -134,9 +134,8 @@ export function useMermaidCache() {
     // PC mode: never use cache — always render SVG
     if (!isNative()) return null
 
-    // Include current theme in hash so dark/light render separately
-    const isDark = document.documentElement.classList.contains('dark') ||
-      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    // Only trust the app's own theme class, not system prefers-color-scheme
+    const isDark = document.documentElement.classList.contains('dark')
     const themedSrc = (isDark ? 'dark:' : 'light:') + src
     const hash = await hashString(themedSrc)
     // Check in-memory cache first
@@ -167,8 +166,7 @@ export function useMermaidCache() {
    */
   const cacheSvgLater = useCallback(async (src: string, svgText: string) => {
     if (!isNative()) return
-    const isDark = document.documentElement.classList.contains('dark') ||
-      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    const isDark = document.documentElement.classList.contains('dark')
     const themedSrc = (isDark ? 'dark:' : 'light:') + src
     const hash = await hashString(themedSrc)
     if (cache.current.has(hash) || converting.current.has(hash)) return

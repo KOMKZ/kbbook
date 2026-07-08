@@ -45,19 +45,18 @@ function loadFromStorage(): LogEntry[] {
 }
 entries = loadFromStorage()
 
-// File writer callback — set by StorageContext init to write to app files dir
-let _fileWrite: ((json: string) => void) | null = null
-
-export function setDebugFileWriter(fn: ((json: string) => void) | null) {
-  _fileWrite = fn
-}
-
 function persist() {
   try {
     const last = entries.slice(-MAX_ENTRIES)
     const json = JSON.stringify(last)
     localStorage.setItem(STORAGE_KEY, json)
-    if (_fileWrite) _fileWrite(json)
+    // In Capacitor WebView, write to files/debug-log.json via native plugin (adb readable)
+    try {
+      const cap = (window as any).Capacitor
+      if (cap?.Plugins?.LZPortalSync?.writeDebugLog) {
+        cap.Plugins.LZPortalSync.writeDebugLog({ json })
+      }
+    } catch {}
   } catch {}
 }
 

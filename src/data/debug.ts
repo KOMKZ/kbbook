@@ -85,6 +85,16 @@ function hookConsole() {
 // Hook console immediately
 hookConsole()
 
+// Global error capture
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (e) => {
+    debugLog.error('global', `${e.message} at ${e.filename}:${e.lineno}`)
+  })
+  window.addEventListener('unhandledrejection', (e) => {
+    debugLog.error('global', `Unhandled rejection: ${e.reason}`, e.reason?.stack)
+  })
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 export const debugLog = {

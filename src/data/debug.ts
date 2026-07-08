@@ -36,6 +36,15 @@ export function setDebugFileWriter(writer: DebugFileWriter | null) {
   fileWriter = writer
 }
 
+function isNativeCapacitor(): boolean {
+  try {
+    const cap = (window as any).Capacitor
+    return !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform())
+  } catch {
+    return false
+  }
+}
+
 // ── Persistence ──────────────────────────────────────────────────────────────
 
 function loadFromStorage(): LogEntry[] {
@@ -58,13 +67,13 @@ function persist() {
     const json = JSON.stringify(last)
     localStorage.setItem(STORAGE_KEY, json)
     if (fileWriter) {
-      try { void fileWriter(json) } catch {}
+      try { void Promise.resolve(fileWriter(json)).catch(() => {}) } catch {}
     }
     // In Capacitor WebView, write to files/debug-log.json via native plugin (adb readable)
     try {
       const cap = (window as any).Capacitor
-      if (cap?.Plugins?.LZPortalSync?.writeDebugLog) {
-        cap.Plugins.LZPortalSync.writeDebugLog({ json })
+      if (isNativeCapacitor() && cap?.Plugins?.LZPortalSync?.writeDebugLog) {
+        void Promise.resolve(cap.Plugins.LZPortalSync.writeDebugLog({ json })).catch(() => {})
       }
     } catch {}
   } catch {}
@@ -148,8 +157,8 @@ export const debugLog = {
       const fn = level === 'error' ? _origConsole.error : level === 'warn' ? _origConsole.warn : _origConsole.log
       fn(`[${module}] ${message}`, detail ?? '')
     }
-    // Persist every 10 entries
-    if (entries.length % 10 === 0) persist()
+    // Persist errors immediately so crash diagnostics survive reloads.
+    if (level === 'error' || level === 'warn' || entries.length % 10 === 0) persist()
   },
 
   getEntries(): LogEntry[] { return [...entries] },

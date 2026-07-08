@@ -79,8 +79,7 @@ async function ossSign(method: string, objectKey: string, bucket: string, akId: 
   return `OSS ${akId}:${signature}`
 }
 
-function ossUrl(bucket: string, region: string, objectKey: string, endpoint?: string): string {
-  if (endpoint) return `${endpoint}/${objectKey}`
+function ossUrl(bucket: string, region: string, objectKey: string): string {
   return `https://${bucket}.${region}.aliyuncs.com/${objectKey}`
 }
 
@@ -90,7 +89,7 @@ function ossUrl(bucket: string, region: string, objectKey: string, endpoint?: st
 export async function pullLatest(config: OssConfig): Promise<OssResult & { dump?: DatabaseDump }> {
   const base = config.path || 'lz-learn-portal-sqllite-data'
   const key = `${base}/kbdata/latest.json`
-  const url = ossUrl(config.bucket, config.region, key, config.endpoint)
+  const url = ossUrl(config.bucket, config.region, key)
   try {
     const auth = await ossSign('GET', key, config.bucket, config.accessKeyId, config.accessKeySecret)
     const resp = await fetch(url, { headers: { 'Date': new Date().toUTCString(), 'Authorization': auth } })
@@ -139,7 +138,7 @@ export async function uploadSnapshot(dump: DatabaseDump, config: OssConfig): Pro
   const base = config.path || 'lz-learn-portal-sqllite-data'
   const ts = new Date().toISOString().replace(/[:.]/g, '-')
   const key = `${base}/kbdata/${ts}.json`
-  const url = ossUrl(config.bucket, config.region, key, config.endpoint)
+  const url = ossUrl(config.bucket, config.region, key)
   const body = JSON.stringify(filtered)
   try {
     const auth = await ossSign('PUT', key, config.bucket, config.accessKeyId, config.accessKeySecret)

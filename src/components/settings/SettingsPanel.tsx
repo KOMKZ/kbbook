@@ -317,10 +317,6 @@ const SettingsPanel = () => {
     setDocResult(null)
     try {
       await triggerSync(ossCfg)
-      // Read result from context after triggerSync completes
-      const { syncResult: result } = await import('@/contexts/DocModeContext.js')
-      const now = new Date().toLocaleTimeString()
-      // Use a small delay to let state settle, then check syncResult from the closure
       setToast({ message: '文档同步完成', severity: 'success' })
     } catch (e: any) {
       setProgress(null)
@@ -330,7 +326,7 @@ const SettingsPanel = () => {
   }
 
   // Watch syncResult changes and persist to docResult
-  useEffect(() => {
+  React.useEffect(() => {
     if (!syncing && syncResult) {
       setDocResult({
         added: syncResult.added,

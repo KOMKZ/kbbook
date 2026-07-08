@@ -25,7 +25,8 @@ const MIN_ZOOM = 0.1; const MAX_ZOOM = 10; const STEP = 0.2
 const ImageViewer = ({ open, src, alt, label, isDark, onClose }: Props) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
-  const stateRef = useRef({ zoom:1, x:0, y:0, dragging:false, sx:0, sy:0, ix:0, iy:0, raf:0 })
+  const stateRef = useRef({ zoom:1, x:0, y:0, dragging:false, sx:0, sy:0, ix:0, iy:0, raf:0,
+    pinchDist:0, pinchZoom:1, pinchX:0, pinchY:0, lastTap:0 })
 
   const apply = useCallback(() => {
     if (!imgRef.current) return
@@ -60,18 +61,63 @@ const ImageViewer = ({ open, src, alt, label, isDark, onClose }: Props) => {
     return () => el.removeEventListener('wheel', onWheel)
   }, [open, apply])
 
-  // Drag
+  // Drag + Pinch + Double-tap
   useEffect(() => {
     if (!open) return
-    const onDown = (e: MouseEvent|TouchEvent) => { e.preventDefault(); const s=stateRef.current; s.dragging=true; const ce='touches' in e ? e.touches[0] : e; s.sx=ce.clientX; s.sy=ce.clientY; s.ix=s.x; s.iy=s.y }
-    const onMove = (e: MouseEvent|TouchEvent) => { const s=stateRef.current; if(!s.dragging) return; const ce='touches' in e ? e.touches[0] : (e as MouseEvent); cancelAnimationFrame(s.raf); s.raf=requestAnimationFrame(()=>{ s.x=s.ix+(ce.clientX-s.sx); s.y=s.iy+(ce.clientY-s.sy); apply() }) }
-    const onUp = () => { stateRef.current.dragging=false }
     const el = containerRef.current; if(!el) return
+
+    const getDist = (t: TouchEvent) => {
+      if (t.touches.length < 2) return 0
+      const dx = t.touches[0].clientX - t.touches[1].clientX
+      const dy = t.touches[0].clientY - t.touches[1].clientY
+      return Math.sqrt(dx*dx + dy*dy)
+    }
+    const getMid = (t: TouchEvent) => ({
+      x: (t.touches[0].clientX + t.touches[1].clientX) / 2,
+      y: (t.touches[0].clientY + t.touches[1].clientY) / 2,
+    })
+
+    const onDown = (e: MouseEvent|TouchEvent) => {
+      const s=stateRef.current
+      if ('touches' in e && e.touches.length === 2) {
+        // Pinch start
+        s.dragging=false; s.pinchDist=getDist(e); s.pinchZoom=s.zoom; s.pinchX=s.x; s.pinchY=s.y
+        return
+      }
+      // Double-tap detection
+      if ('touches' in e) {
+        const now = Date.now()
+        if (now - s.lastTap < 300) { e.preventDefault(); fitToScreen(); s.lastTap=0; return }
+        s.lastTap = now
+      }
+      e.preventDefault(); s.dragging=true
+      const ce='touches' in e ? e.touches[0] : e; s.sx=ce.clientX; s.sy=ce.clientY; s.ix=s.x; s.iy=s.y
+    }
+
+    const onMove = (e: MouseEvent|TouchEvent) => {
+      const s=stateRef.current
+      if ('touches' in e && e.touches.length === 2 && s.pinchDist > 0) {
+        // Pinch zoom
+        const d = getDist(e); const mid = getMid(e)
+        const rect = el.getBoundingClientRect()
+        const cx = mid.x - rect.left; const cy = mid.y - rect.top
+        const nz = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, s.pinchZoom * (d / s.pinchDist)))
+        const r = nz / s.zoom
+        s.x = cx - r*(cx - s.x); s.y = cy - r*(cy - s.y); s.zoom = nz
+        apply(); return
+      }
+      if (!s.dragging) return
+      const ce='touches' in e ? e.touches[0] : (e as MouseEvent)
+      cancelAnimationFrame(s.raf); s.raf=requestAnimationFrame(()=>{ s.x=s.ix+(ce.clientX-s.sx); s.y=s.iy+(ce.clientY-s.sy); apply() })
+    }
+
+    const onUp = () => { const s=stateRef.current; s.dragging=false; s.pinchDist=0 }
+
     el.addEventListener('mousedown', onDown); el.addEventListener('touchstart', onDown, { passive:false })
     document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp)
     document.addEventListener('touchmove', onMove, { passive:false }); document.addEventListener('touchend', onUp)
     return () => { el.removeEventListener('mousedown',onDown); el.removeEventListener('touchstart',onDown); document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp); document.removeEventListener('touchmove',onMove); document.removeEventListener('touchend',onUp) }
-  }, [open, apply])
+  }, [open, apply, fitToScreen])
 
   // Keyboard
   useEffect(() => { if(!open) return; const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') onClose(); if(e.key==='0'&&(e.metaKey||e.ctrlKey)){e.preventDefault();fitToScreen()} }; document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h) }, [open,onClose,fitToScreen])

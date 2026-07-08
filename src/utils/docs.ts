@@ -273,9 +273,15 @@ export async function loadDocsMeta(version: string, lang?: LanguageCode, seriesI
 export async function loadDocContent(version: string, slug: string, lang?: LanguageCode): Promise<string> {
   const language = lang || getCurrentLanguage()
   const cacheKey = `${language}/${version}/${slug}`
-  
+
   if (docCache.has(cacheKey)) {
-    return docCache.get(cacheKey)!
+    const cached = docCache.get(cacheKey)!
+    // Defend against stale HTML cached before SPA-fallback fix was deployed
+    if (cached.includes('@vite/client') || cached.trimStart().startsWith('<!doctype')) {
+      docCache.delete(cacheKey)
+    } else {
+      return cached
+    }
   }
 
   try {

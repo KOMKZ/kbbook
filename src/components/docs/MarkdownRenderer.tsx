@@ -480,14 +480,15 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
                     aria-label="View diagram fullscreen"
                     onClick={async (e: React.MouseEvent) => {
                       e.stopPropagation()
-                      const parent = (e.currentTarget as HTMLElement).parentElement
-                      const code = parent?.parentElement?.getAttribute('data-code') || ''
+                      // Button is direct child of mermaid-block, which has data-code
+                      const block = (e.currentTarget as HTMLElement).parentElement
+                      const code = block?.getAttribute('data-code') || ''
                       // Try PNG cache first (tablet only)
                       const pngUrl = code ? await getMermaidPng(code) : null
                       if (pngUrl) {
                         openFullscreenPng(pngUrl)
                       } else {
-                        const svgEl = parent?.querySelector('svg')
+                        const svgEl = block?.querySelector('svg')
                         if (svgEl) openFullscreen(svgEl as SVGElement, false)
                       }
                     }}

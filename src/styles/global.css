@@ -240,3 +240,4 @@ samp {
     padding: 20px !important;
   }
 }
+mark:hover .hl-del-btn{display:inline-block!important}

@@ -29,6 +29,7 @@ import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import { usePersistentState } from '../../utils/usePersistentState'
 import HighlightToolbar from '../../components/docs/HighlightToolbar'
+import BrushToolbar from '../../components/docs/BrushToolbar'
 import HighlightPanel from '../../components/docs/HighlightPanel'
 import { useHighlight } from '../../components/docs/useHighlight'
 import { localStorageHighlightApi } from '../../data/highlight/localStorage'
@@ -149,6 +150,50 @@ const DocsPage = () => {
   const highlightSourceKey = `${seriesId || 'unknown'}/${slug || 'unknown'}`
   const hl = useHighlight({ api: localStorageHighlightApi, sourceType: highlightSourceType, sourceKey: highlightSourceKey })
   useEffect(() => { if (slug) hl.load() }, [slug])
+
+  // Restore highlight marks after content renders
+  useEffect(() => {
+    if (!content || hl.highlights.length === 0) return
+    const timer = setTimeout(() => {
+      const bgColors: Record<string, string> = { yellow:'rgba(250,204,21,0.4)', green:'rgba(74,222,128,0.4)', blue:'rgba(96,165,250,0.4)', pink:'rgba(244,114,182,0.4)', orange:'rgba(251,146,60,0.4)' }
+      const container = document.querySelector('[data-testid="article-content"]') || document.getElementById('content')
+      if (!container) return
+      // Walk text nodes and wrap matching highlight text
+      hl.highlights.forEach(h => {
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+        while (walker.nextNode()) {
+          const node = walker.currentNode
+          const idx = node.textContent?.indexOf(h.text) ?? -1
+          if (idx >= 0 && node.parentElement && !node.parentElement.closest('mark,script,style,code,pre')) {
+            try {
+              const range = document.createRange()
+              range.setStart(node, idx)
+              range.setEnd(node, idx + h.text.length)
+              const mark = document.createElement('mark')
+              mark.className = `hl-${h.color[0]}`
+              mark.style.cssText = `background:${bgColors[h.color] || bgColors.yellow};border-radius:3px;padding:0 2px;cursor:default;position:relative`
+              // Delete button
+              const del = document.createElement('span')
+              del.textContent = '×'
+              del.className = 'hl-del-btn'
+              del.style.cssText = 'display:none;position:absolute;top:-8px;right:-6px;width:16px;height:16px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;line-height:16px;text-align:center;cursor:pointer;z-index:1'
+              del.onclick = (ev: Event) => {
+                ev.stopPropagation()
+                const m = (ev.target as HTMLElement).parentElement
+                if (!m) return
+                hl.remove(h.id)
+                const p = m.parentNode; if (p) { while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m) }
+              }
+              mark.appendChild(del)
+              range.surroundContents(mark)
+              break // only first occurrence per highlight
+            } catch {}
+          }
+        }
+      })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [content, hl.highlights.length])
 
   // 系列短标题(用于复制路径)
   const [seriesShortTitle, setSeriesShortTitle] = useState('')
@@ -654,30 +699,28 @@ const DocsPage = () => {
               try {
                 const mark = document.createElement('mark')
                 mark.className = `hl-${hl.activeColor[0]}`
-                mark.style.cssText = `background:${bgColors[hl.activeColor]};border-radius:2px;padding:0 1px;cursor:pointer`
+                mark.style.cssText = `background:${bgColors[hl.activeColor]};border-radius:3px;padding:0 2px;cursor:default;position:relative`
                 mark.setAttribute('data-hl-color', hl.activeColor)
+                // Delete button inside mark (hidden, shown on hover)
+                const del = document.createElement('span')
+                del.textContent = '×'
+                del.className = 'hl-del-btn'
+                del.style.cssText = 'display:none;position:absolute;top:-8px;right:-6px;width:16px;height:16px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;line-height:16px;text-align:center;cursor:pointer;z-index:1'
+                del.onclick = (ev) => {
+                  ev.stopPropagation()
+                  const m = (ev.target as HTMLElement).parentElement
+                  if (!m) return
+                  const t = m.textContent?.replace('×','') || ''
+                  const found = hl.highlights.find(h => h.text === t)
+                  if (found) hl.remove(found.id)
+                  const p = m.parentNode
+                  if (p) { while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m) }
+                }
+                mark.appendChild(del)
                 range.surroundContents(mark)
               } catch { /* cross-node selection, skip visual */ }
               const rangeJson = hl.serializeRange(range)
               hl.create(text, rangeJson)
-            }}
-            onClick={(e) => {
-              // Click on a <mark> → delete the highlight
-              const target = e.target as HTMLElement
-              if (target.tagName === 'MARK' && target.classList.contains('hl-y') || target.classList.contains('hl-g') || target.classList.contains('hl-b') || target.classList.contains('hl-p') || target.classList.contains('hl-o')) {
-                const text = target.textContent || ''
-                // Find and delete the matching highlight
-                const match = hl.highlights.find(h => h.text === text)
-                if (match) {
-                  hl.remove(match.id)
-                  // Unwrap the mark
-                  const parent = target.parentNode
-                  if (parent) {
-                    while (target.firstChild) parent.insertBefore(target.firstChild, target)
-                    parent.removeChild(target)
-                  }
-                }
-              }
             }}
           >
             {loading ? (
@@ -756,6 +799,14 @@ const DocsPage = () => {
             fontSize: '0.82rem',
           },
         }}
+      />
+
+      {/* Brush floating toolbar */}
+      <BrushToolbar
+        open={hl.brushMode}
+        activeColor={hl.activeColor}
+        onSelectColor={hl.setActiveColor}
+        onClose={() => hl.setBrushMode(false)}
       />
 
       {/* Highlight / Notes Panel */}

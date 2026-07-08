@@ -151,46 +151,87 @@ const DocsPage = () => {
   const hl = useHighlight({ api: localStorageHighlightApi, sourceType: highlightSourceType, sourceKey: highlightSourceKey })
   useEffect(() => { if (slug) hl.load() }, [slug])
 
-  // Restore highlight marks after content renders
+  // ── Highlight helpers ─────────────────────────────────────────────────────
+  const BG: Record<string, string> = { yellow:'rgba(250,204,21,0.4)', green:'rgba(74,222,128,0.4)', blue:'rgba(96,165,250,0.4)', pink:'rgba(244,114,182,0.4)', orange:'rgba(251,146,60,0.4)' }
+
+  /** Serialize node path from root element (like rong-admin-ui). */
+  function nodePath(node: Node, root: Element): string {
+    const p: number[] = []
+    let n: Node | null = node
+    while (n && n !== root) {
+      const parent = n.parentNode
+      if (!parent) break
+      p.unshift(Array.from(parent.childNodes).indexOf(n as ChildNode))
+      n = parent
+    }
+    return p.join('/')
+  }
+
+  function resolvePath(path: string, root: Element): Node | null {
+    if (!path) return root
+    return path.split('/').map(Number).reduce<Node | null>((cur, idx) => cur?.childNodes[idx] ?? null, root)
+  }
+
+  function createMark(color: string, id?: number): HTMLElement {
+    const m = document.createElement('mark')
+    m.className = 'kb-hl-mark'
+    m.dataset.hlColor = color
+    if (id != null) m.dataset.hlId = String(id)
+    m.style.cssText = `background:${BG[color] || BG.yellow};border-radius:2px;padding:0 1px;cursor:pointer`
+    return m
+  }
+
+  /** Apply <mark> to range, with TreeWalker fallback for cross-node selections. */
+  function applyMark(range: Range, color: string, id?: number) {
+    try {
+      const m = createMark(color, id)
+      range.surroundContents(m)
+    } catch {
+      // Cross-node: split by text nodes
+      const tw = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT, {
+        acceptNode(n) {
+          const r = document.createRange(); r.selectNodeContents(n)
+          return range.compareBoundaryPoints(Range.END_TO_START, r) < 0 && range.compareBoundaryPoints(Range.START_TO_END, r) > 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+        }
+      })
+      const nodes: Text[] = []
+      while (tw.nextNode()) nodes.push(tw.currentNode as Text)
+      for (const tn of nodes) {
+        const nr = document.createRange()
+        if (tn === range.startContainer) { nr.setStart(tn, range.startOffset); nr.setEnd(tn, tn.length) }
+        else if (tn === range.endContainer) { nr.setStart(tn, 0); nr.setEnd(tn, range.endOffset) }
+        else nr.selectNodeContents(tn)
+        const m = createMark(color, id)
+        try { nr.surroundContents(m) } catch {}
+      }
+    }
+  }
+
+  /** Remove all highlight marks from content area. */
+  function removeAllMarks() {
+    document.querySelectorAll('#article-content .kb-hl-mark').forEach(m => {
+      const p = m.parentNode; if (p) { while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m); p.normalize() }
+    })
+  }
+
+  // Restore highlight marks after content renders using serialized ranges
   useEffect(() => {
     if (!content || hl.highlights.length === 0) return
     const timer = setTimeout(() => {
-      const bgColors: Record<string, string> = { yellow:'rgba(250,204,21,0.4)', green:'rgba(74,222,128,0.4)', blue:'rgba(96,165,250,0.4)', pink:'rgba(244,114,182,0.4)', orange:'rgba(251,146,60,0.4)' }
-      const container = document.getElementById('article-content')
-      if (!container) return
-      // Walk text nodes and wrap matching highlight text
-      hl.highlights.forEach(h => {
-        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
-        while (walker.nextNode()) {
-          const node = walker.currentNode
-          const idx = node.textContent?.indexOf(h.text) ?? -1
-          if (idx >= 0 && node.parentElement && !node.parentElement.closest('mark,script,style,code,pre')) {
-            try {
-              const range = document.createRange()
-              range.setStart(node, idx)
-              range.setEnd(node, idx + h.text.length)
-              const mark = document.createElement('mark')
-              mark.className = `hl-${h.color[0]}`
-              mark.style.cssText = `background:${bgColors[h.color] || bgColors.yellow};border-radius:3px;padding:0 2px;cursor:default;position:relative`
-              // Delete button
-              const del = document.createElement('span')
-              del.textContent = '×'
-              del.className = 'hl-del-btn'
-              del.style.cssText = 'display:none;position:absolute;top:-8px;right:-6px;width:16px;height:16px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;line-height:16px;text-align:center;cursor:pointer;z-index:1'
-              del.onclick = (ev: Event) => {
-                ev.stopPropagation()
-                const m = (ev.target as HTMLElement).parentElement
-                if (!m) return
-                hl.remove(h.id)
-                const p = m.parentNode; if (p) { while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m) }
-              }
-              mark.appendChild(del)
-              range.surroundContents(mark)
-              break // only first occurrence per highlight
-            } catch {}
-          }
-        }
-      })
+      const root = document.getElementById('article-content')
+      if (!root) return
+      removeAllMarks()
+      for (const h of hl.highlights) {
+        try {
+          const sr = JSON.parse(h.serialized_range)
+          const sn = resolvePath(sr.startContainerPath || sr.startPath, root)
+          const en = resolvePath(sr.endContainerPath || sr.endPath, root)
+          if (!sn || !en) continue
+          const r = document.createRange()
+          r.setStart(sn, sr.startOffset); r.setEnd(en, sr.endOffset)
+          applyMark(r, h.color, h.id)
+        } catch {}
+      }
     }, 300)
     return () => clearTimeout(timer)
   }, [content, hl.highlights])
@@ -428,10 +469,9 @@ const DocsPage = () => {
           <>
             {/* Highlight / Notes */}
             <HighlightToolbar
-              brushMode={hl.brushMode} activeColor={hl.activeColor} panelOpen={hl.panelOpen}
+              brushMode={hl.brushMode} panelOpen={hl.panelOpen}
               highlightCount={hl.highlights.length}
               onToggleBrush={() => hl.setBrushMode(!hl.brushMode)}
-              onSelectColor={hl.setActiveColor}
               onTogglePanel={() => hl.setPanelOpen(!hl.panelOpen)}
             />
 
@@ -695,33 +735,50 @@ const DocsPage = () => {
               const text = sel.toString().trim()
               if (!text) return
               const range = sel.getRangeAt(0)
-              // Wrap selected text in <mark> for immediate visual feedback
-              const bgColors: Record<string, string> = { yellow:'rgba(250,204,21,0.4)', green:'rgba(74,222,128,0.4)', blue:'rgba(96,165,250,0.4)', pink:'rgba(244,114,182,0.4)', orange:'rgba(251,146,60,0.4)' }
-              try {
-                const mark = document.createElement('mark')
-                mark.className = `hl-${hl.activeColor[0]}`
-                mark.style.cssText = `background:${bgColors[hl.activeColor]};border-radius:3px;padding:0 2px;cursor:default;position:relative`
-                mark.setAttribute('data-hl-color', hl.activeColor)
-                // Delete button inside mark (hidden, shown on hover)
-                const del = document.createElement('span')
-                del.textContent = '×'
-                del.className = 'hl-del-btn'
-                del.style.cssText = 'display:none;position:absolute;top:-8px;right:-6px;width:16px;height:16px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;line-height:16px;text-align:center;cursor:pointer;z-index:1'
-                del.onclick = (ev) => {
-                  ev.stopPropagation()
-                  const m = (ev.target as HTMLElement).parentElement
-                  if (!m) return
-                  const t = m.textContent?.replace('×','') || ''
-                  const found = hl.highlights.find(h => h.text === t)
-                  if (found) hl.remove(found.id)
-                  const p = m.parentNode
-                  if (p) { while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m) }
+              const root = document.getElementById('article-content')
+              if (!root || !root.contains(range.commonAncestorContainer)) return
+
+              // Detect overlapping highlights (like rong-admin-ui collectOverlappingHighlightIds)
+              const overlapIds = new Set<number>()
+              document.querySelectorAll('#article-content .kb-hl-mark[data-hl-id]').forEach(m => {
+                if (range.intersectsNode(m)) {
+                  const id = Number((m as HTMLElement).dataset.hlId)
+                  if (id) overlapIds.add(id)
                 }
-                mark.appendChild(del)
-                range.surroundContents(mark)
-              } catch { /* cross-node selection, skip visual */ }
-              const rangeJson = hl.serializeRange(range)
-              hl.create(text, rangeJson)
+              })
+              // Remove overlapping marks visually
+              overlapIds.forEach(id => {
+                document.querySelectorAll(`#article-content .kb-hl-mark[data-hl-id="${id}"]`).forEach(m => {
+                  const p = m.parentNode
+                  if (p) { while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m); p.normalize() }
+                })
+                hl.remove(id)
+              })
+
+              // Serialize range
+              const sr = {
+                startContainerPath: nodePath(range.startContainer, root),
+                startOffset: range.startOffset,
+                endContainerPath: nodePath(range.endContainer, root),
+                endOffset: range.endOffset,
+              }
+              const rangeJson = JSON.stringify(sr)
+              hl.create(text, rangeJson).then(item => {
+                if (item) {
+                  applyMark(range, hl.activeColor, item.id)
+                  sel.removeAllRanges()
+                }
+              })
+            }}
+            // Click on mark → delete (like rong-admin-ui popover)
+            onClick={(e) => {
+              const mark = (e.target as HTMLElement).closest('.kb-hl-mark') as HTMLElement | null
+              if (!mark) return
+              const id = Number(mark.dataset.hlId)
+              if (!id) return
+              const p = mark.parentNode
+              if (p) { while (mark.firstChild) p.insertBefore(mark.firstChild, mark); p.removeChild(mark); p.normalize() }
+              hl.remove(id)
             }}
           >
             {loading ? (

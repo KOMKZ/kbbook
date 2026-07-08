@@ -57,29 +57,29 @@ const mermaidThemes = {
   dark: {
     theme: 'dark' as const,
     themeVariables: {
-      primaryColor: '#6366f1',
-      primaryTextColor: '#fff',
-      primaryBorderColor: '#818cf8',
-      lineColor: '#94a3b8',
-      secondaryColor: '#1e1b4b',
-      tertiaryColor: '#312e81',
-      background: '#0f0a1f',
+      primaryColor: '#818cf8',
+      primaryTextColor: '#ffffff',
+      primaryBorderColor: '#a5b4fc',
+      lineColor: '#cbd5e1',
+      secondaryColor: '#312e81',
+      tertiaryColor: '#4338ca',
+      background: '#0b0815',
       mainBkg: '#1e1b4b',
-      textColor: '#e2e8f0',
+      textColor: '#f1f5f9',
       fontSize: '14px',
     },
   },
   light: {
     theme: 'default' as const,
     themeVariables: {
-      primaryColor: '#5046e5',
-      primaryTextColor: '#0f172a',
-      primaryBorderColor: '#a5b4fc',
-      lineColor: '#64748b',
+      primaryColor: '#4f46e5',
+      primaryTextColor: '#ffffff',
+      primaryBorderColor: '#818cf8',
+      lineColor: '#334155',
       secondaryColor: '#e0e7ff',
       tertiaryColor: '#c7d2fe',
-      background: '#f8fafc',
-      mainBkg: '#e0e7ff',
+      background: '#ffffff',
+      mainBkg: '#eef2ff',
       textColor: '#0f172a',
       fontSize: '14px',
     },
@@ -233,7 +233,7 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
         const { svg } = await mermaid.render(uniqueId, code)
         newSvgs[code] = svg
         // Background: convert SVG to PNG and cache for fullscreen (tablet only)
-        cacheSvgLater(code, svg)
+        cacheSvgLater(code, svg, isDark)
       } catch {
         newSvgs[code] = ''
       }
@@ -485,7 +485,7 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
                       const block = (e.currentTarget as HTMLElement).parentElement
                       const code = block?.getAttribute('data-code') || ''
                       // Try PNG cache first (tablet only)
-                      const pngUrl = code ? await getMermaidPng(code) : null
+                      const pngUrl = code ? await getMermaidPng(code, isDark) : null
                       if (pngUrl) {
                         setImageViewer({ src: pngUrl, label: `Mermaid · PNG` })
                       } else {

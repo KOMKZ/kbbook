@@ -130,12 +130,11 @@ export function useMermaidCache() {
    * Get mermaid PNG for a given source string.
    * Returns blob URL on cache hit, null if need to render SVG first.
    */
-  const getMermaidPng = useCallback(async (src: string): Promise<string | null> => {
+  const getMermaidPng = useCallback(async (src: string, isDarkTheme?: boolean): Promise<string | null> => {
     // PC mode: never use cache — always render SVG
     if (!isNative()) return null
 
-    // Only trust the app's own theme class, not system prefers-color-scheme
-    const isDark = document.documentElement.classList.contains('dark')
+    const isDark = isDarkTheme ?? document.documentElement.classList.contains('dark')
     const themedSrc = (isDark ? 'dark:' : 'light:') + src
     const hash = await hashString(themedSrc)
     // Check in-memory cache first
@@ -164,9 +163,9 @@ export function useMermaidCache() {
    * Convert SVG to PNG and cache it (called after SVG is rendered to DOM).
    * Safe to call multiple times — deduplicates via converting set.
    */
-  const cacheSvgLater = useCallback(async (src: string, svgText: string) => {
+  const cacheSvgLater = useCallback(async (src: string, svgText: string, isDarkTheme?: boolean) => {
     if (!isNative()) return
-    const isDark = document.documentElement.classList.contains('dark')
+    const isDark = isDarkTheme ?? document.documentElement.classList.contains('dark')
     const themedSrc = (isDark ? 'dark:' : 'light:') + src
     const hash = await hashString(themedSrc)
     if (cache.current.has(hash) || converting.current.has(hash)) return

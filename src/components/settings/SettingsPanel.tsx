@@ -28,6 +28,7 @@ import Paper from '@mui/material/Paper'
 import CircularProgress from '@mui/material/CircularProgress'
 import LinearProgress from '@mui/material/LinearProgress'
 import CloudSyncIcon from '@mui/icons-material/CloudSync'
+import BugReportIcon from '@mui/icons-material/BugReport'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
@@ -106,6 +107,7 @@ function ToolbarSizeSection() {
 const NAV_ITEMS = [
   { id: 'general', label: '通用',   icon: <SettingsIcon fontSize="small" /> },
   { id: 'sync',    label: '同步',   icon: <SyncIcon fontSize="small" /> },
+  { id: 'debug',   label: '调试',   icon: <BugReportIcon fontSize="small" /> },
   { id: 'oss',     label: 'OSS',    icon: <CloudSyncIcon fontSize="small" /> },
   { id: 'version', label: '版本',   icon: <InfoIcon fontSize="small" /> },
 ] as const
@@ -143,6 +145,52 @@ function saveOssConfig(cfg: typeof OSS_DEFAULTS) {
 }
 
 // ============================================================
+// ============================================================
+// Debug Panel
+// ============================================================
+
+function DebugPanel() {
+  const [entries, setEntries] = useState<Array<{id:number;timestamp:number;level:string;module:string;message:string;detail?:string}>>([])
+  const [filter, setFilter] = useState('')
+  const [paused, setPaused] = useState(false)
+
+  useEffect(() => {
+    if (paused) return
+    const t = setInterval(async () => {
+      try {
+        const { debugLog } = await import('@/utils/debug.js')
+        setEntries(debugLog.getRecent(200, filter || undefined))
+      } catch {}
+    }, 1000)
+    return () => clearInterval(t)
+  }, [paused, filter])
+
+  const lc = (l: string) => l === 'error' ? '#f44336' : l === 'warn' ? '#ff9800' : l === 'info' ? '#2196f3' : '#888'
+
+  return (
+    <Section title="调试日志" subtitle={`${entries.length} 条 · 自动捕获所有 error/warning/info`} icon={<BugReportIcon color="primary" />}>
+      <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+        <TextField size="small" placeholder="过滤模块…" value={filter} onChange={e => setFilter(e.target.value)} sx={{ flex: 1 }} />
+        <Button size="small" variant={paused ? 'contained' : 'outlined'} onClick={() => setPaused(!paused)}>{paused ? '▶ 继续' : '⏸ 暂停'}</Button>
+        <Button size="small" onClick={async () => { const { debugLog } = await import('@/utils/debug.js'); debugLog.clear(); setEntries([]) }}>清空</Button>
+      </Box>
+      <Paper variant="outlined" sx={{ maxHeight: 400, overflow: 'auto', p: 1, bgcolor: '#1e1e1e', fontFamily: 'monospace', fontSize: 11 }}>
+        {entries.length === 0 ? (
+          <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>暂无日志</Typography>
+        ) : entries.map(e => (
+          <Box key={e.id} sx={{ py: 0.25, borderBottom: '1px solid #333', lineHeight: 1.4 }}>
+            <Typography component="span" sx={{ color: '#888', mr: 1 }}>{new Date(e.timestamp).toLocaleTimeString()}</Typography>
+            <Typography component="span" sx={{ color: lc(e.level), fontWeight: 'bold', mr: 1 }}>{e.level.toUpperCase()}</Typography>
+            <Typography component="span" sx={{ color: '#4ec9b0', mr: 1 }}>[{e.module}]</Typography>
+            <Typography component="span" sx={{ color: '#d4d4d4' }}>{e.message}</Typography>
+            {e.detail && <Typography component="span" sx={{ color: '#888', ml: 0.5 }}>{e.detail.substring(0, 200)}</Typography>}
+          </Box>
+        ))}
+      </Paper>
+    </Section>
+  )
+}
+
 // SettingsPanel
 // ============================================================
 
@@ -228,6 +276,9 @@ const SettingsPanel = () => {
     setProgress(null)
     try {
       await triggerSync(ossCfg)
+      // Clear meta cache so nav picks up new articles
+      const { clearDocsCache } = await import('@/utils/docs.js')
+      clearDocsCache()
       setToast({ message: 'OSS 同步完成', severity: 'success' })
     } catch (e: any) {
       setProgress(null)
@@ -333,6 +384,9 @@ const SettingsPanel = () => {
             </Section>
           </>
         )
+
+      case 'debug':
+        return <DebugPanel />
 
       case 'oss':
         return (

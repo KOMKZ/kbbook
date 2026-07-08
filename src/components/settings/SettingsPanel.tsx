@@ -326,7 +326,7 @@ const SettingsPanel = () => {
   }
 
   // Watch syncResult changes and persist to docResult
-  React.useEffect(() => {
+  useEffect(() => {
     if (!syncing && syncResult) {
       setDocResult({
         added: syncResult.added,

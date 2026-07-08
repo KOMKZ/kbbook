@@ -250,6 +250,7 @@ const SettingsPanel = () => {
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
   const [sqliteResult, setSqliteResult] = useState<{ tables: number; rows: number; sizeKB: string; time: string } | null>(null)
+  const [docResult, setDocResult] = useState<{ added: number; updated: number; deleted: number; fileCount: number; time: string; error?: string } | null>(null)
   const [webVersion, setWebVersion] = useState<string>('...')
   const [appVersion, setAppVersion] = useState<string>('...')
 
@@ -313,14 +314,33 @@ const SettingsPanel = () => {
 
   const handleDocSync = async () => {
     setProgress(null)
+    setDocResult(null)
     try {
       await triggerSync(ossCfg)
+      // Read result from context after triggerSync completes
+      const { syncResult: result } = await import('@/contexts/DocModeContext.js')
+      const now = new Date().toLocaleTimeString()
+      // Use a small delay to let state settle, then check syncResult from the closure
       setToast({ message: '文档同步完成', severity: 'success' })
     } catch (e: any) {
       setProgress(null)
+      setDocResult({ added: 0, updated: 0, deleted: 0, fileCount: 0, time: new Date().toLocaleTimeString(), error: e?.message || '同步失败' })
       setToast({ message: e?.message || '同步失败', severity: 'error' })
     }
   }
+
+  // Watch syncResult changes and persist to docResult
+  useEffect(() => {
+    if (!syncing && syncResult) {
+      setDocResult({
+        added: syncResult.added,
+        updated: syncResult.updated,
+        deleted: syncResult.deleted,
+        fileCount: syncResult.fileCount,
+        time: new Date().toLocaleTimeString(),
+      })
+    }
+  }, [syncing, syncResult])
 
   // ---- per-nav content ----
 
@@ -391,6 +411,18 @@ const SettingsPanel = () => {
                 onClick={handleDocSync} disabled={isSyncing} fullWidth>
                 {isSyncing ? '同步中...' : '立即同步文档'}
               </Button>
+              {docResult && (
+                <Box sx={{ mt: 1, p: 1.5, borderRadius: 1, bgcolor: docResult.error ? 'error.light' : 'success.light', color: docResult.error ? 'error.contrastText' : 'success.contrastText' }}>
+                  <Typography variant="body2" fontWeight="bold">
+                    {docResult.error ? `同步失败: ${docResult.error}` : `同步完成: ${docResult.fileCount} 文件 · ${docResult.time}`}
+                  </Typography>
+                  {!docResult.error && (docResult.added > 0 || docResult.updated > 0 || docResult.deleted > 0) && (
+                    <Typography variant="caption" sx={{ mt: 0.5, display: 'block' }}>
+                      +{docResult.added} 新增 · ~{docResult.updated} 更新 · -{docResult.deleted} 删除
+                    </Typography>
+                  )}
+                </Box>
+              )}
               <Button variant="outlined" size="small" sx={{ mt: 1 }} fullWidth
                 onClick={async () => {
                   const { debugLog } = await import('@/data/debug.js')

@@ -26,6 +26,7 @@ import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import { useMermaidZoom } from './useMermaidZoom'
 import MermaidFullscreen from './MermaidFullscreen'
+import { useMermaidCache } from './useMermaidCache'
 
 // Prism 语言支持
 import 'prismjs/components/prism-go'
@@ -202,6 +203,9 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
     onTouchStart,
   } = useMermaidZoom()
 
+  // Mermaid PNG cache (tablet/mobile only, PC falls through)
+  const { getMermaidPng, cacheSvgLater, isNative: isMermaidCacheNative } = useMermaidCache()
+
   // Mermaid 初始化
   useEffect(() => {
     const themeConfig = isDark ? mermaidThemes.dark : mermaidThemes.light
@@ -222,10 +226,18 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
       if (!code || block.querySelector('.mermaid-svg-wrapper svg')) continue
 
       try {
+        // Check PNG cache first (tablet only, PC returns null immediately)
+        const pngUrl = await getMermaidPng(code)
+        if (pngUrl) {
+          // Cache hit — store as special marker
+          newSvgs[code] = `__png__:${pngUrl}`
+          continue
+        }
         const uniqueId = `mermaid-${Date.now()}-${mermaidRenderCount++}`
         const { svg } = await mermaid.render(uniqueId, code)
-        // 不直接操作 DOM，交由 React state → dangerouslySetInnerHTML 渲染
         newSvgs[code] = svg
+        // Background: convert SVG to PNG and cache for next time (tablet only)
+        cacheSvgLater(code, svg)
       } catch {
         newSvgs[code] = ''
       }
@@ -454,14 +466,17 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
             // Mermaid 图表
             if (language === 'mermaid') {
               const cachedSvg = mermaidSvgs[codeString]
-              // cachedSvg === undefined → 尚未渲染（首次加载中）
-              // cachedSvg === ''       → 渲染失败
-              // cachedSvg 为非空字符串 → 渲染成功
+              const isPng = typeof cachedSvg === 'string' && cachedSvg.startsWith('__png__:')
+              const pngUrl = isPng ? cachedSvg.slice(8) : null
               const isError = cachedSvg === ''
               return (
                 <div className="mermaid-block" data-code={codeString}>
                   {isError ? (
                     <Box sx={{ color: '#ef4444', py: 2 }}>Mermaid render failed</Box>
+                  ) : isPng ? (
+                    <Box className="mermaid-svg-wrapper" sx={{ width: '100%' }}>
+                      <img src={pngUrl!} alt="mermaid diagram" style={{ maxWidth: '100%', height: 'auto', display: 'block' }} />
+                    </Box>
                   ) : (
                     <Box
                       className="mermaid-svg-wrapper"

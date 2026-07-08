@@ -749,6 +749,7 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
         open={!!imageViewer}
         src={imageViewer?.src || ''}
         label={imageViewer?.label}
+        isDark={isDark}
         onClose={() => setImageViewer(null)}
       />
     </Box>

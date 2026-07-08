@@ -18,7 +18,8 @@ interface Props {
   open: boolean
   src: string
   alt?: string
-  label?: string  // shown in toolbar
+  label?: string
+  isDark?: boolean  // dark mode → dark bg + image border for contrast
   onClose: () => void
 }
 
@@ -26,7 +27,11 @@ const MIN_ZOOM = 0.1
 const MAX_ZOOM = 10
 const STEP = 0.2
 
-const ImageViewer = ({ open, src, alt, label, onClose }: Props) => {
+const ImageViewer = ({ open, src, alt, label, isDark, onClose }: Props) => {
+  const bg = isDark ? '#0d1117' : '#f8fafc'
+  const imgShadow = isDark
+    ? '0 0 0 1px rgba(255,255,255,0.12), 0 8px 32px rgba(0,0,0,0.5)'
+    : '0 0 0 1px rgba(0,0,0,0.08), 0 8px 32px rgba(0,0,0,0.12)'
   const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
   const stateRef = useRef({ zoom: 1, x: 0, y: 0, dragging: false, sx: 0, sy: 0, ix: 0, iy: 0, raf: 0 })
@@ -130,18 +135,21 @@ const ImageViewer = ({ open, src, alt, label, onClose }: Props) => {
   if (!open) return null
 
   return (
-    <Box sx={{ position: 'fixed', inset: 0, zIndex: 9999, bgcolor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(8px)', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ position: 'fixed', inset: 0, zIndex: 9999, bgcolor: bg, display: 'flex', flexDirection: 'column' }}>
       {/* Toolbar */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 3, py: 1.5, bgcolor: 'rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 3, py: 1.5,
+        bgcolor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+        borderBottom: '1px solid', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+      }}>
+        <Typography variant="body2" sx={{ color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)', fontWeight: 500 }}>
           {label || alt || 'Image Viewer'}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Tooltip title="Zoom out"><IconButton size="small" onClick={zoomOut} sx={{ color: 'rgba(255,255,255,0.8)' }}><RemoveIcon fontSize="small" /></IconButton></Tooltip>
-          <Tooltip title="Zoom in"><IconButton size="small" onClick={zoomIn} sx={{ color: 'rgba(255,255,255,0.8)' }}><AddIcon fontSize="small" /></IconButton></Tooltip>
-          <Tooltip title="Fit to screen"><IconButton size="small" onClick={fitToScreen} sx={{ color: 'rgba(255,255,255,0.8)', ml: 1 }}><FitScreenIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title="Zoom out"><IconButton size="small" onClick={zoomOut} sx={{ color: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)' }}><RemoveIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title="Zoom in"><IconButton size="small" onClick={zoomIn} sx={{ color: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)' }}><AddIcon fontSize="small" /></IconButton></Tooltip>
+          <Tooltip title="Fit to screen"><IconButton size="small" onClick={fitToScreen} sx={{ color: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)', ml: 1 }}><FitScreenIcon fontSize="small" /></IconButton></Tooltip>
         </Box>
-        <Tooltip title="Close (Esc)"><IconButton size="small" onClick={onClose} sx={{ color: 'rgba(255,255,255,0.8)' }}><CloseIcon /></IconButton></Tooltip>
+        <Tooltip title="Close (Esc)"><IconButton size="small" onClick={onClose} sx={{ color: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)' }}><CloseIcon /></IconButton></Tooltip>
       </Box>
 
       {/* Image area */}
@@ -150,12 +158,12 @@ const ImageViewer = ({ open, src, alt, label, onClose }: Props) => {
         onDoubleClick={fitToScreen}
       >
         <img ref={imgRef} src={src} alt={alt || ''}
-          style={{ position: 'absolute', transformOrigin: '0 0', userSelect: 'none', pointerEvents: 'none' }}
+          style={{ position: 'absolute', transformOrigin: '0 0', userSelect: 'none', pointerEvents: 'none', boxShadow: imgShadow, borderRadius: 4 }}
         />
       </Box>
 
       {/* Hint */}
-      <Box sx={{ px: 3, py: 1, bgcolor: 'rgba(255,255,255,0.04)', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'center', gap: 3 }}>
+      <Box sx={{ px: 3, py: 1, bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', borderTop: '1px solid', borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', display: 'flex', justifyContent: 'center', gap: 3 }}>
         {['Scroll: Zoom', 'Drag: Pan', 'Double-click: Fit', 'Esc: Close'].map(h => (
           <Typography key={h} variant="caption" sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.7rem' }}>{h}</Typography>
         ))}

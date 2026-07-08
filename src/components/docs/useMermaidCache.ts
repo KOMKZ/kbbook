@@ -134,7 +134,11 @@ export function useMermaidCache() {
     // PC mode: never use cache — always render SVG
     if (!isNative()) return null
 
-    const hash = await hashString(src)
+    // Include current theme in hash so dark/light render separately
+    const isDark = document.documentElement.classList.contains('dark') ||
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    const themedSrc = (isDark ? 'dark:' : 'light:') + src
+    const hash = await hashString(themedSrc)
     // Check in-memory cache first
     if (cache.current.has(hash)) {
       addDebug('mermaid-cache', `in-memory hit: ${hash}`)
@@ -163,7 +167,10 @@ export function useMermaidCache() {
    */
   const cacheSvgLater = useCallback(async (src: string, svgText: string) => {
     if (!isNative()) return
-    const hash = await hashString(src)
+    const isDark = document.documentElement.classList.contains('dark') ||
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    const themedSrc = (isDark ? 'dark:' : 'light:') + src
+    const hash = await hashString(themedSrc)
     if (cache.current.has(hash) || converting.current.has(hash)) return
     converting.current.add(hash)
     addDebug('mermaid-cache', `converting SVG→PNG: ${hash} (${svgText.length} chars)`)

@@ -159,7 +159,7 @@ const DocsPage = () => {
     const p: number[] = []
     let n: Node | null = node
     while (n && n !== root) {
-      const parent = n.parentNode
+      const parent: Node | null = n.parentNode
       if (!parent) break
       p.unshift(Array.from(parent.childNodes).indexOf(n as ChildNode))
       n = parent

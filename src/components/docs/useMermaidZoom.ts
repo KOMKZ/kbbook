@@ -4,207 +4,156 @@ const ZOOM_MIN = 0.1
 const ZOOM_MAX = 5
 const ZOOM_STEP = 0.15
 
-export interface MermaidZoomState {
-  fullscreenSvg: string | null
-  zoom: number
-  panX: number
-  panY: number
-  isDragging: boolean
-}
-
 export function useMermaidZoom() {
   const [fullscreenSvg, setFullscreenSvg] = useState<string | null>(null)
-  const [zoom, setZoom] = useState(1)
-  const [panX, setPanX] = useState(0)
-  const [panY, setPanY] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
-  const canvasRef = useRef<HTMLDivElement>(null)
+  const [zoomPercent, setZoomPercent] = useState(100)
 
-  const dragState = useRef({ startX: 0, startY: 0, panStartX: 0, panStartY: 0 })
+  // Direct DOM refs — bypass React for transform updates (avoids per-frame reconciliation)
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const transformRef = useRef({ zoom: 1, panX: 0, panY: 0 })
+  const dragRef = useRef({ startX: 0, startY: 0, px0: 0, py0: 0, raf: 0 })
+
+  const applyTransform = useCallback(() => {
+    if (!contentRef.current) return
+    const { zoom, panX, panY } = transformRef.current
+    contentRef.current.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`
+  }, [])
 
   const fitSvgToCanvas = useCallback(() => {
     if (!canvasRef.current) return
     const svg = canvasRef.current.querySelector('svg')
     if (!svg) return
-
-    const viewBox = svg.getAttribute('viewBox')
-    if (!viewBox) return
-    const parts = viewBox.split(/[\s,]+/)
+    const vb = svg.getAttribute('viewBox')
+    if (!vb) return
+    const parts = vb.split(/[\s,]+/)
     if (parts.length < 4) return
-
-    const svgW = parseFloat(parts[2])
-    const svgH = parseFloat(parts[3])
-    const padding = 48
-    const totalW = svgW + padding
-    const totalH = svgH + padding
-
+    const sw = parseFloat(parts[2]), sh = parseFloat(parts[3]), pad = 48
     const rect = canvasRef.current.getBoundingClientRect()
-    const margin = 48
-    const availW = rect.width - margin * 2
-    const availH = rect.height - margin * 2
+    const m = 48
+    const fit = Math.min((rect.width - m * 2) / (sw + pad), (rect.height - m * 2) / (sh + pad), 1.5)
+    transformRef.current = { zoom: fit, panX: -(sw + pad) * fit / 2, panY: -(sh + pad) * fit / 2 }
+    setZoomPercent(Math.round(fit * 100))
+    applyTransform()
+  }, [applyTransform])
 
-    const fitZoom = Math.min(availW / totalW, availH / totalH, 1.5)
-    setZoom(fitZoom)
-    setPanX(-(totalW * fitZoom) / 2)
-    setPanY(-(totalH * fitZoom) / 2)
-  }, [])
-
-  const openFullscreen = useCallback(
-    (svgElement: SVGElement) => {
-      const clone = svgElement.cloneNode(true) as SVGElement
-      // 保留 style（含 Mermaid background），只清掉可能干扰全屏的定位属性
-      const style = clone.getAttribute('style') || ''
-      clone.setAttribute('style', style.replace(/position\s*:\s*[^;]+;?/gi, '').replace(/max-width\s*:\s*[^;]+;?/gi, ''))
-      const vb = clone.getAttribute('viewBox')
-      if (vb) {
-        const p = vb.split(/[\s,]+/)
-        if (p.length >= 4) {
-          clone.setAttribute('width', p[2])
-          clone.setAttribute('height', p[3])
-        }
-      }
-      setFullscreenSvg(clone.outerHTML)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(fitSvgToCanvas)
-      })
-    },
-    [fitSvgToCanvas],
-  )
+  const openFullscreen = useCallback((el: SVGElement) => {
+    const clone = el.cloneNode(true) as SVGElement
+    let s = clone.getAttribute('style') || ''
+    s = s.replace(/position\s*:\s*[^;]+;?/gi, '').replace(/max-width\s*:\s*[^;]+;?/gi, '')
+    clone.setAttribute('style', s)
+    const vb = clone.getAttribute('viewBox')
+    if (vb) { const p = vb.split(/[\s,]+/); if (p.length >= 4) { clone.setAttribute('width', p[2]); clone.setAttribute('height', p[3]) } }
+    setFullscreenSvg(clone.outerHTML)
+    transformRef.current = { zoom: 1, panX: 0, panY: 0 }
+    setZoomPercent(100)
+    requestAnimationFrame(() => requestAnimationFrame(fitSvgToCanvas))
+  }, [fitSvgToCanvas])
 
   const closeFullscreen = useCallback(() => {
     setFullscreenSvg(null)
-    setZoom(1)
-    setPanX(0)
-    setPanY(0)
   }, [])
 
+  // Zoom — apply directly to DOM, only update % for display
   const zoomIn = useCallback(() => {
-    setZoom((z) => Math.min(ZOOM_MAX, z * (1 + ZOOM_STEP)))
-  }, [])
+    const t = transformRef.current
+    t.zoom = Math.min(ZOOM_MAX, t.zoom * (1 + ZOOM_STEP))
+    setZoomPercent(Math.round(t.zoom * 100))
+    applyTransform()
+  }, [applyTransform])
 
   const zoomOut = useCallback(() => {
-    setZoom((z) => Math.max(ZOOM_MIN, z * (1 - ZOOM_STEP)))
+    const t = transformRef.current
+    t.zoom = Math.max(ZOOM_MIN, t.zoom * (1 - ZOOM_STEP))
+    setZoomPercent(Math.round(t.zoom * 100))
+    applyTransform()
+  }, [applyTransform])
+
+  const resetView = useCallback(() => fitSvgToCanvas(), [fitSvgToCanvas])
+
+  // Wheel zoom — direct DOM, RAF-throttled
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault()
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const cx = e.clientX - rect.left, cy = e.clientY - rect.top
+    const t = transformRef.current
+    const factor = e.deltaY < 0 ? 1 + ZOOM_STEP : 1 - ZOOM_STEP
+    const nz = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, t.zoom * factor))
+    const r = nz / t.zoom
+    t.panX = cx - r * (cx - t.panX)
+    t.panY = cy - r * (cy - t.panY)
+    t.zoom = nz
+    setZoomPercent(Math.round(nz * 100))
+    applyTransform()
+  }, [applyTransform])
+
+  // Drag — direct DOM, bypass React state
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    setIsDragging(true)
+    const t = transformRef.current
+    dragRef.current = { startX: e.clientX, startY: e.clientY, px0: t.panX, py0: t.panY, raf: 0 }
   }, [])
 
-  const resetView = useCallback(() => {
-    fitSvgToCanvas()
-  }, [fitSvgToCanvas])
-
-  const onWheel = useCallback(
-    (e: React.WheelEvent) => {
-      const rect = canvasRef.current?.getBoundingClientRect()
-      if (!rect) return
-
-      const cursorX = e.clientX - rect.left
-      const cursorY = e.clientY - rect.top
-
-      setZoom((oldZoom) => {
-        const factor = e.deltaY < 0 ? 1 + ZOOM_STEP : 1 - ZOOM_STEP
-        const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, oldZoom * factor))
-        const ratio = newZoom / oldZoom
-
-        setPanX((px) => cursorX - ratio * (cursorX - px))
-        setPanY((py) => cursorY - ratio * (cursorY - py))
-
-        return newZoom
-      })
-    },
-    [],
-  )
-
-  const onDragStart = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.button !== 0) return
-      setIsDragging(true)
-      dragState.current = {
-        startX: e.clientX,
-        startY: e.clientY,
-        panStartX: panX,
-        panStartY: panY,
-      }
-    },
-    [panX, panY],
-  )
-
-  const onTouchStart = useCallback(
-    (e: React.TouchEvent) => {
-      if (e.touches.length !== 1) return
-      setIsDragging(true)
-      dragState.current = {
-        startX: e.touches[0].clientX,
-        startY: e.touches[0].clientY,
-        panStartX: panX,
-        panStartY: panY,
-      }
-    },
-    [panX, panY],
-  )
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return
+    setIsDragging(true)
+    const t = transformRef.current
+    dragRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, px0: t.panX, py0: t.panY, raf: 0 }
+  }, [])
 
   useEffect(() => {
     if (!isDragging) return
-
-    const onMove = (e: MouseEvent) => {
-      const { startX, startY, panStartX, panStartY } = dragState.current
-      setPanX(panStartX + (e.clientX - startX))
-      setPanY(panStartY + (e.clientY - startY))
+    const onMove = (dx: number, dy: number) => {
+      const { px0, py0 } = dragRef.current
+      transformRef.current.panX = px0 + dx
+      transformRef.current.panY = py0 + dy
+      applyTransform()
+    }
+    const onMouseMove = (e: MouseEvent) => {
+      cancelAnimationFrame(dragRef.current.raf)
+      dragRef.current.raf = requestAnimationFrame(() => onMove(e.clientX - dragRef.current.startX, e.clientY - dragRef.current.startY))
     }
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length !== 1) return
-      const { startX, startY, panStartX, panStartY } = dragState.current
-      setPanX(panStartX + (e.touches[0].clientX - startX))
-      setPanY(panStartY + (e.touches[0].clientY - startY))
+      e.preventDefault()
+      cancelAnimationFrame(dragRef.current.raf)
+      dragRef.current.raf = requestAnimationFrame(() => onMove(e.touches[0].clientX - dragRef.current.startX, e.touches[0].clientY - dragRef.current.startY))
     }
-
     const onUp = () => setIsDragging(false)
 
-    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mousemove', onMouseMove)
     document.addEventListener('mouseup', onUp)
     document.addEventListener('touchmove', onTouchMove, { passive: false })
     document.addEventListener('touchend', onUp)
     return () => {
-      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onUp)
       document.removeEventListener('touchmove', onTouchMove)
       document.removeEventListener('touchend', onUp)
     }
-  }, [isDragging])
+  }, [isDragging, applyTransform])
 
+  // Keyboard
   useEffect(() => {
-    const handleKeydown = (e: KeyboardEvent) => {
+    const h = (e: KeyboardEvent) => {
       if (!fullscreenSvg) return
-
-      if (e.key === 'Escape') {
-        closeFullscreen()
-      } else if ((e.key === '=' || e.key === '+') && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        zoomIn()
-      } else if (e.key === '-' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        zoomOut()
-      } else if (e.key === '0' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        resetView()
-      }
+      if (e.key === 'Escape') closeFullscreen()
+      else if ((e.key === '=' || e.key === '+') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); zoomIn() }
+      else if (e.key === '-' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); zoomOut() }
+      else if (e.key === '0' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); resetView() }
     }
-
-    document.addEventListener('keydown', handleKeydown)
-    return () => document.removeEventListener('keydown', handleKeydown)
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
   }, [fullscreenSvg, closeFullscreen, zoomIn, zoomOut, resetView])
 
   return {
-    fullscreenSvg,
-    zoom,
-    panX,
-    panY,
-    isDragging,
-    canvasRef,
-    openFullscreen,
-    closeFullscreen,
-    zoomIn,
-    zoomOut,
-    resetView,
-    onWheel,
-    onDragStart,
-    onTouchStart,
+    fullscreenSvg, zoomPercent, isDragging,
+    canvasRef, contentRef,
+    openFullscreen, closeFullscreen,
+    zoomIn, zoomOut, resetView,
+    onWheel, onDragStart, onTouchStart,
   }
 }

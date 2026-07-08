@@ -188,11 +188,10 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
 
   const {
     fullscreenSvg,
-    zoom,
-    panX,
-    panY,
+    zoomPercent,
     isDragging,
     canvasRef,
+    contentRef,
     openFullscreen,
     closeFullscreen,
     zoomIn,
@@ -717,11 +716,10 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
       {fullscreenSvg && (
         <MermaidFullscreen
           svgHtml={fullscreenSvg}
-          zoom={zoom}
-          panX={panX}
-          panY={panY}
+          zoomPercent={zoomPercent}
           isDragging={isDragging}
           canvasRef={canvasRef}
+          contentRef={contentRef}
           onClose={closeFullscreen}
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}

@@ -10,11 +10,10 @@ import CloseIcon from '@mui/icons-material/Close'
 
 interface MermaidFullscreenProps {
   svgHtml: string
-  zoom: number
-  panX: number
-  panY: number
+  zoomPercent: number
   isDragging: boolean
   canvasRef: React.RefObject<HTMLDivElement | null>
+  contentRef: React.RefObject<HTMLDivElement | null>
   onClose: () => void
   onZoomIn: () => void
   onZoomOut: () => void
@@ -25,21 +24,11 @@ interface MermaidFullscreenProps {
 }
 
 const MermaidFullscreen = ({
-  svgHtml,
-  zoom,
-  panX,
-  panY,
-  isDragging,
-  canvasRef,
-  onClose,
-  onZoomIn,
-  onZoomOut,
-  onResetView,
-  onWheel,
-  onDragStart,
-  onTouchStart,
+  svgHtml, zoomPercent, isDragging,
+  canvasRef, contentRef,
+  onClose, onZoomIn, onZoomOut, onResetView,
+  onWheel, onDragStart, onTouchStart,
 }: MermaidFullscreenProps) => {
-  const zoomPercent = Math.round(zoom * 100)
 
   return (
     <Fade in>
@@ -130,13 +119,14 @@ const MermaidFullscreen = ({
           }}
         >
           <Box
+            ref={contentRef}
             dangerouslySetInnerHTML={{ __html: svgHtml }}
             sx={{
               position: 'absolute',
               left: '50%',
               top: '50%',
-              transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
               transformOrigin: '0 0',
+              willChange: 'transform',
               '& svg': {
                 display: 'block',
                 backgroundColor: '#f8fafc',

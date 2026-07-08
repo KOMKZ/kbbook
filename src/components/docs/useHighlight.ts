@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, type RefObject } from 'react'
+import { useState, useCallback } from 'react'
 import type { HighlightItem, HighlightColor, HighlightApiAdapter } from '../../data/highlight/types'
 
 export const HIGHLIGHT_COLORS: HighlightColor[] = ['yellow', 'green', 'blue', 'pink', 'orange']
@@ -116,7 +116,7 @@ export function useHighlight({ api, sourceType, sourceKey }: UseHighlightOptions
       const path: number[] = []
       let n: Node | null = node
       while (n && n !== root) {
-        const parent = n.parentNode
+        const parent: Node | null = n.parentNode
         if (!parent) break
         let idx = 0
         for (let c = parent.firstChild; c && c !== n; c = c.nextSibling) idx++

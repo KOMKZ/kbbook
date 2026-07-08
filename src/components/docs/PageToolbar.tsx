@@ -18,14 +18,14 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import ReadingHistoryDialog from './ReadingHistoryDialog'
 import { useReadingHistory } from '../../hooks/useReadingHistory'
 import { useToolbarSizeCtx } from '../../contexts/ToolbarSizeContext'
-import { getPreferencesRepo } from '@/data/bridge.js'
+// preferences via localStorage
 
 const KEY_Y = 'lz-pagetoolbar-y'
 
 function loadY(): number | null {
   return null
 }
-function saveY(y: number) { try { getPreferencesRepo()?.set(KEY_Y, y) } catch {} }
+function saveY(y: number) { try { localStorage.setItem("kbbook-toolbar-y", String(y)) } catch {} }
 
 interface Props {
   extraButtons?: React.ReactNode

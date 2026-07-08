@@ -431,6 +431,9 @@ const SettingsPanel = () => {
                     const sizeKB = ((result.sizeBytes || 0) / 1024).toFixed(1)
                     const now = new Date().toLocaleTimeString()
                     setSqliteResult({ tables: remoteTables, rows: remoteRows, sizeKB, time: now })
+                    // Clear docs cache so nav sidebar picks up new articles
+                    const { clearDocsCache } = await import('@/utils/docs.js')
+                    clearDocsCache()
                     setToast({ message: `同步完成: ${remoteTables} 表 ${remoteRows} 行 (${sizeKB} KB)`, severity: 'success' })
                     debugLog.info('sync', `SQLite sync done: ${remoteTables}t/${remoteRows}r, local was ${localRows}r`)
                     debugLog.flush()

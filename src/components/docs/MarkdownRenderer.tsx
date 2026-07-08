@@ -26,6 +26,7 @@ import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import { useMermaidZoom } from './useMermaidZoom'
 import MermaidFullscreen from './MermaidFullscreen'
+import ImageViewer from './ImageViewer'
 import { useMermaidCache } from './useMermaidCache'
 
 // Prism 语言支持
@@ -186,6 +187,7 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
   // 缓存已渲染的 Mermaid SVG —— React 重渲染时从 state 取出，
   // 避免因 Virtual DOM 里 mermaid-block 是空的而清掉直接写入的 SVG。
   const [mermaidSvgs, setMermaidSvgs] = useState<Record<string, string>>({})
+  const [imageViewer, setImageViewer] = useState<{ src: string; label: string } | null>(null)
 
   const {
     fullscreenSvg,
@@ -486,7 +488,7 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
                       // Try PNG cache first (tablet only)
                       const pngUrl = code ? await getMermaidPng(code) : null
                       if (pngUrl) {
-                        openFullscreenPng(pngUrl)
+                        setImageViewer({ src: pngUrl, label: `Mermaid · PNG` })
                       } else {
                         const svgEl = block?.querySelector('svg')
                         if (svgEl) openFullscreen(svgEl as SVGElement, false)
@@ -742,6 +744,14 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
           onTouchStart={onTouchStart}
         />
       )}
+
+      {/* Image viewer for cached PNGs */}
+      <ImageViewer
+        open={!!imageViewer}
+        src={imageViewer?.src || ''}
+        label={imageViewer?.label}
+        onClose={() => setImageViewer(null)}
+      />
     </Box>
   )
 }

@@ -71,7 +71,7 @@ async function cacheGet(key: string): Promise<Blob | null> {
 /** Convert SVG text to PNG Blob via canvas. */
 function svgToPngBlob(svgText: string): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    const scale = Math.max(2, (window.devicePixelRatio || 2) * 2) // 2x minimum, 4x on 2x screens
+    const scale = Math.max(3, (window.devicePixelRatio || 2) * 3) // 3x minimum, 6x on 2x screens
     const img = new Image()
     const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' })
     const url = URL.createObjectURL(svgBlob)

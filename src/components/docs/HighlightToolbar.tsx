@@ -5,7 +5,6 @@
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import Box from '@mui/material/Box'
-import Typography from '@mui/material/Typography'
 import Badge from '@mui/material/Badge'
 import FormatPaintIcon from '@mui/icons-material/FormatPaint'
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline'

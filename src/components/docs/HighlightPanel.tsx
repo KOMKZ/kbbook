@@ -1,7 +1,6 @@
 /**
  * HighlightPanel — right-side drawer showing all highlights + notes.
  */
-import { useState } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
@@ -14,7 +13,6 @@ import CloseIcon from '@mui/icons-material/Close'
 import EditIcon from '@mui/icons-material/Edit'
 import CircularProgress from '@mui/material/CircularProgress'
 import Drawer from '@mui/material/Drawer'
-import Divider from '@mui/material/Divider'
 import type { HighlightItem, HighlightColor } from '../../data/highlight/types'
 import { COLOR_BG } from './useHighlight'
 

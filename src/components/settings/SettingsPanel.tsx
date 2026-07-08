@@ -173,7 +173,7 @@ function DebugPanel() {
         <TextField size="small" placeholder="过滤模块…" value={filter} onChange={e => setFilter(e.target.value)} sx={{ flex: 1 }} />
         <Button size="small" variant={paused ? 'contained' : 'outlined'} onClick={() => setPaused(!paused)}>{paused ? '▶ 继续' : '⏸ 暂停'}</Button>
         <Button size="small" onClick={async () => { const { debugLog } = await import('@/utils/debug.js'); debugLog.clear(); setEntries([]) }}>清空</Button>
-        <Button size="small" onClick={async () => { const { debugLog } = await import('@/utils/debug.js'); await navigator.clipboard.writeText(debugLog.export()); setToast({message:'已复制到剪贴板',severity:'success'}) }}>复制</Button>
+        <Button size="small" onClick={async () => { const { debugLog } = await import('@/utils/debug.js'); await navigator.clipboard.writeText(debugLog.export()) }}>复制</Button>
       </Box>
       <Paper variant="outlined" sx={{ maxHeight: 400, overflow: 'auto', p: 1, bgcolor: '#1e1e1e', fontFamily: 'monospace', fontSize: 11 }}>
         {entries.length === 0 ? (

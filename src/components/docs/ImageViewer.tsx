@@ -39,11 +39,11 @@ const ImageViewer = ({ open, src, alt, label, isDark, onClose }: Props) => {
     const img = imgRef.current; const rect = containerRef.current.getBoundingClientRect()
     const iw = img.naturalWidth; const ih = img.naturalHeight
     const fit = Math.min((rect.width - 80) / iw, (rect.height - 80) / ih, 1)
-    stateRef.current = { zoom:fit, x:(rect.width-iw*fit)/2, y:(rect.height-ih*fit)/2, dragging:false, sx:0, sy:0, ix:0, iy:0, raf:0 }
+    stateRef.current = { zoom:fit, x:(rect.width-iw*fit)/2, y:(rect.height-ih*fit)/2, dragging:false, sx:0, sy:0, ix:0, iy:0, raf:0, pinchDist:0, pinchZoom:1, pinchX:0, pinchY:0, lastTap:0 }
     apply()
   }, [apply])
 
-  useEffect(() => { if (open) { stateRef.current.zoom=1; stateRef.current.x=0; stateRef.current.y=0; setTimeout(fitToScreen, 100) } }, [open, fitToScreen, src])
+  useEffect(() => { if (open) { stateRef.current = { zoom:1, x:0, y:0, dragging:false, sx:0, sy:0, ix:0, iy:0, raf:0, pinchDist:0, pinchZoom:1, pinchX:0, pinchY:0, lastTap:0 }; setTimeout(fitToScreen, 100) } }, [open, fitToScreen, src])
 
   // Wheel
   useEffect(() => {

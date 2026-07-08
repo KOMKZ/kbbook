@@ -9,7 +9,7 @@
  *   - API: debugLog.info/warn/error, getEntries, getRecent, clear, summary
  *
  * View in Settings → 同步 → 调试日志
- * Read via adb: adb shell "run-as com.lzlab.portal cat app_webview/Default/Local\ Storage/leveldb/*.log"
+ * Read via adb: adb shell "run-as <app.package> cat app_webview/Default/Local\ Storage/leveldb/*.log"
  *   or via CDP: Runtime.evaluate on localStorage.getItem('kbbook-debug-log')
  */
 
@@ -25,9 +25,16 @@ export interface LogEntry {
 const MAX_ENTRIES = 300
 const STORAGE_KEY = 'kbbook-debug-log'
 
+type DebugFileWriter = (json: string) => void | Promise<void>
+
 let entries: LogEntry[] = []
 let nextId = 1
 let _enabled = true  // default ON
+let fileWriter: DebugFileWriter | null = null
+
+export function setDebugFileWriter(writer: DebugFileWriter | null) {
+  fileWriter = writer
+}
 
 // ── Persistence ──────────────────────────────────────────────────────────────
 
@@ -50,6 +57,9 @@ function persist() {
     const last = entries.slice(-MAX_ENTRIES)
     const json = JSON.stringify(last)
     localStorage.setItem(STORAGE_KEY, json)
+    if (fileWriter) {
+      try { void fileWriter(json) } catch {}
+    }
     // In Capacitor WebView, write to files/debug-log.json via native plugin (adb readable)
     try {
       const cap = (window as any).Capacitor

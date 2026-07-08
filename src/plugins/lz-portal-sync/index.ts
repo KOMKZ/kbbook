@@ -210,7 +210,7 @@ export const pullKbdata = async (): Promise<{ success: boolean; key?: string; si
 
 // === Debug log file persistence ===
 
-/** Write debug log entries to app's files dir (adb: run-as com.lzlab.portal cat files/debug-log.json). */
+/** Write debug log entries to app's files dir (adb: run-as <app.package> cat files/debug-log.json). */
 export const writeDebugLog = async (json: string): Promise<void> => {
   if (isNative()) {
     try { await LZPortalSync.writeDebugLog({ json }) } catch {}

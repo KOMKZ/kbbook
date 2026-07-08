@@ -289,6 +289,9 @@ export async function loadDocContent(version: string, slug: string, lang?: Langu
     if (_readLocalDoc) {
       try {
         const content = await _readLocalDoc(`${language}/${version}/${slug}`)
+        if (content.trimStart().startsWith('<') || content.includes('@vite/client')) {
+          throw new Error('HTML fallback from readLocalDoc')
+        }
         docCache.set(cacheKey, content)
         return content
       } catch {

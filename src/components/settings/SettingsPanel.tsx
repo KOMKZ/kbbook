@@ -392,31 +392,48 @@ const SettingsPanel = () => {
               </Button>
               <Button variant="outlined" size="small" sx={{ mt: 1 }} fullWidth
                 onClick={async () => {
+                  const { debugLog } = await import('@/data/debug.js')
                   try {
                     const { getDriver, getPreferencesRepo } = await import('@/data/bridge.js')
                     const driver = getDriver()
                     const prefs = getPreferencesRepo()
-                    if (!driver || !prefs) { setToast({ message: '存储未就绪', severity: 'error' }); return }
+                    if (!driver || !prefs) { setToast({ message: '存储未就绪', severity: 'error' }); debugLog.error('sync','driver or prefs not ready'); return }
                     const cfg = await prefs.get<Record<string, string>>('kbbook-oss-config')
-                    if (!cfg?.bucket) { setToast({ message: '请先配置 OSS 参数', severity: 'error' }); return }
+                    debugLog.info('sync', 'SQLite sync: OSS config loaded', { bucket: cfg?.bucket, path: cfg?.path, hasKey: !!cfg?.accessKeyId, endpoint: cfg?.endpoint })
+                    if (!cfg?.bucket) { setToast({ message: '请先配置 OSS 参数', severity: 'error' }); debugLog.error('sync','bucket missing from config'); return }
                     setToast({ message: '正在从 OSS 拉取数据...', severity: 'success' })
                     const { pullLatest, mergeFromOss } = await import('@/data/sync/oss.js')
                     const { exportDatabase, importDatabase } = await import('@/data/migration/exporter.js')
+                    const region = regionFromEndpoint(cfg.endpoint || 'https://oss-cn-shenzhen.aliyuncs.com')
+                    debugLog.info('sync', `pullLatest: bucket=${cfg.bucket} region=${region} path=${cfg.path}`)
                     const result = await pullLatest({
                       bucket: cfg.bucket,
-                      region: regionFromEndpoint(cfg.endpoint || 'https://oss-cn-shenzhen.aliyuncs.com'),
+                      region,
                       endpoint: cfg.endpoint,
                       accessKeyId: cfg.accessKeyId, accessKeySecret: cfg.accessKeySecret,
                       path: cfg.path,
                     })
                     if (!result.success || !result.dump) {
-                      setToast({ message: `拉取失败: ${result.error}`, severity: 'error' }); return
+                      const errMsg = `拉取失败: ${result.error}`
+                      setToast({ message: errMsg, severity: 'error' })
+                      debugLog.error('sync', errMsg)
+                      return
                     }
+                    debugLog.info('sync', `pullLatest OK: ${result.sizeBytes} bytes, merging...`)
                     const localDump = await exportDatabase(driver)
+                    debugLog.info('sync', `local dump: ${Object.keys(localDump.tables).length} tables, ${Object.values(localDump.tables).reduce((s,r)=>s+r.length,0)} rows`)
                     const merged = mergeFromOss(localDump, result.dump)
                     await importDatabase(driver, merged)
-                    setToast({ message: `数据同步完成 (${((result.sizeBytes || 0) / 1024).toFixed(1)} KB)`, severity: 'success' })
-                  } catch (e) { setToast({ message: '数据同步异常: ' + (e as Error).message, severity: 'error' }) }
+                    const msg = `数据同步完成 (${((result.sizeBytes || 0) / 1024).toFixed(1)} KB)`
+                    setToast({ message: msg, severity: 'success' })
+                    debugLog.info('sync', msg)
+                    debugLog.flush()
+                  } catch (e) {
+                    const msg = '数据同步异常: ' + (e as Error).message
+                    setToast({ message: msg, severity: 'error' })
+                    debugLog.error('sync', msg, (e as Error).stack)
+                    debugLog.flush()
+                  }
                 }}
               >同步 SQLite 数据</Button>
             </Section>

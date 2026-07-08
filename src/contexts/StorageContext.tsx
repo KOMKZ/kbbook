@@ -110,9 +110,13 @@ async function loadInitialData(d: IStorageDriver) {
 async function seedOssCredentials(d: IStorageDriver) {
   try {
     const rows = await d.query<{key:string, value:string}>("SELECT key, value FROM preferences WHERE key = 'kbbook-oss-config'")
-    if (!rows.length) return
+    if (!rows.length) {
+      debugLog.warn('storage', 'kbbook-oss-config not found in preferences')
+      return
+    }
     let cfg: Record<string, string>
     try { cfg = JSON.parse(rows[0].value) } catch { return }
+    const before = { ...cfg }
     let changed = false
     const bk = (k: string, v: string) => { if (!cfg[k]) { cfg[k] = v; changed = true } }
     // Fill empty fields from Vite-injected globals (replaced at build time via define)
@@ -123,9 +127,11 @@ async function seedOssCredentials(d: IStorageDriver) {
     bk('accessKeySecret', (typeof __OSS_ACCESS_KEY_SECRET__ !== 'undefined' && __OSS_ACCESS_KEY_SECRET__) || '')
     if (changed) {
       await d.exec("UPDATE preferences SET value = ? WHERE key = 'kbbook-oss-config'", [JSON.stringify(cfg)])
-      console.log('[StorageProvider] OSS credentials seeded')
+      debugLog.info('storage', 'OSS credentials seeded', { before, after: cfg })
+    } else {
+      debugLog.info('storage', 'OSS credentials already set', { endpoint: cfg.endpoint, bucket: cfg.bucket, path: cfg.path, hasKey: !!cfg.accessKeyId })
     }
-  } catch (e) { /* non-critical: user can enter manually */ }
+  } catch (e) { debugLog.error('storage', 'seedOssCredentials failed', e) }
 }
 
 export function StorageProvider({ children }: { children: React.ReactNode }) {

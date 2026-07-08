@@ -72,9 +72,10 @@ async function hmacSha1(key: string, data: string): Promise<string> {
   return btoa(String.fromCharCode(...new Uint8Array(sig)))
 }
 
-async function ossSign(method: string, objectKey: string, bucket: string, akId: string, akSecret: string): Promise<string> {
+async function ossSign(method: string, objectKey: string, bucket: string, akId: string, akSecret: string, contentType?: string): Promise<string> {
   const date = new Date().toUTCString()
-  const stringToSign = [method, '', 'application/json', date, `/${bucket}/${objectKey}`].join('\n')
+  const ct = contentType || (method === 'PUT' ? 'application/json' : '')
+  const stringToSign = [method, '', ct, date, `/${bucket}/${objectKey}`].join('\n')
   const signature = await hmacSha1(akSecret, stringToSign)
   return `OSS ${akId}:${signature}`
 }

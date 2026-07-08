@@ -177,7 +177,8 @@ const MetaItem = ({ item, seriesId, onArticleClick, isDark, depth, defaultOpen, 
   // Sync with external expandAll toggle
   useEffect(() => { setOpen(defaultOpen || autoOpenGroup === item.slug) }, [defaultOpen, autoOpenGroup, item.slug])
 
-  if (item.isGroup && item.items && item.items.length > 0) {
+  if (item.isGroup) {
+    const children = item.items || []
     return (
       <Box sx={{ mb: 0.5 }}>
         {/* Group header */}
@@ -193,11 +194,11 @@ const MetaItem = ({ item, seriesId, onArticleClick, isDark, depth, defaultOpen, 
           {open ? <ExpandMoreIcon sx={{ fontSize: 20, color: 'text.secondary' }} /> : <ChevronRightIcon sx={{ fontSize: 20, color: 'text.secondary' }} />}
           <FolderIcon sx={{ fontSize: 18, color: 'primary.main', opacity: 0.7 }} />
           <Typography fontWeight={600} fontSize="0.95rem" sx={{ flex: 1 }}>{item.title}</Typography>
-          <Chip label={`${item.items.length} 篇`} size="small" variant="outlined" sx={{ fontSize: '0.7rem', height: 22 }} />
+          <Chip label={`${children.length} 篇`} size="small" variant="outlined" sx={{ fontSize: '0.7rem', height: 22 }} />
         </Box>
         <Collapse in={open}>
           <Box sx={{ ml: 2, borderLeft: 1, borderColor: 'divider', pl: 1 }}>
-            {item.items.map((child) => (
+            {children.map((child) => (
               <MetaItem key={child.slug} item={child} seriesId={seriesId} onArticleClick={onArticleClick} isDark={isDark} depth={depth + 1} defaultOpen={defaultOpen} autoOpenGroup={autoOpenGroup} />
             ))}
           </Box>

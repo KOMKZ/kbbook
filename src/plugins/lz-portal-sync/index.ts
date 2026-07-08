@@ -63,6 +63,9 @@ export interface LZPortalSyncPlugin {
   setMode(options: { mode: string }): Promise<void>
   getNetworkUrl(): Promise<NetworkUrlResult>
   setNetworkUrl(options: { url: string }): Promise<void>
+  writeDebugLog(options: { json: string }): Promise<void>
+  readDebugLog(): Promise<{ json: string }>
+  setNetworkUrl(options: { url: string }): Promise<void>
   checkWebUpdate(): Promise<WebUpdateResult>
   getWebVersion(): Promise<WebVersionResult>
   addListener(eventName: 'syncProgress', callback: (data: SyncProgress) => void): Promise<PluginListenerHandle>
@@ -194,4 +197,21 @@ export const getWebVersion = async (): Promise<string> => {
     try { const r = await LZPortalSync.getWebVersion(); return r.version } catch { return '0' }
   }
   return '0'
+}
+
+// === Debug log file persistence ===
+
+/** Write debug log entries to app's files dir (adb: run-as com.lzlab.portal cat files/debug-log.json). */
+export const writeDebugLog = async (json: string): Promise<void> => {
+  if (isNative()) {
+    try { await LZPortalSync.writeDebugLog({ json }) } catch {}
+  }
+}
+
+/** Read debug log from app's files dir. */
+export const readDebugLog = async (): Promise<string> => {
+  if (isNative()) {
+    try { const r = await LZPortalSync.readDebugLog(); return r.json } catch { return '[]' }
+  }
+  return '[]'
 }

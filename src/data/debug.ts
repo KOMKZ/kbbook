@@ -48,7 +48,12 @@ entries = loadFromStorage()
 function persist() {
   try {
     const last = entries.slice(-MAX_ENTRIES)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(last))
+    const json = JSON.stringify(last)
+    localStorage.setItem(STORAGE_KEY, json)
+    // In Capacitor app mode, also write to files/debug-log.json (adb accessible)
+    if (typeof window !== 'undefined' && (window as any).Capacitor) {
+      import('@/plugins/lz-portal-sync/index.js').then(m => m.writeDebugLog(json)).catch(() => {})
+    }
   } catch {}
 }
 

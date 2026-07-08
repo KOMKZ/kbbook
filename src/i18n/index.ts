@@ -31,11 +31,11 @@ i18n
     },
     detection: {
       // Language detection order: URL param > localStorage > navigator > fallback
-      order: ['querystring', 'navigator', 'htmlTag'],
+      order: ['querystring', 'localStorage', 'navigator', 'htmlTag'],
       // URL parameter name: ?lang=en-US or ?lang=zh-CN
       lookupQuerystring: 'lang',
       // Cache language selection
-      caches: [],
+      caches: ['localStorage'],
       lookupLocalStorage: 'i18nextLng',
     },
   })

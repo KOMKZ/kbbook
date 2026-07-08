@@ -8,7 +8,6 @@ import SeriesDetailPage from './pages/series/SeriesDetailPage'
 import SettingsPage from './pages/SettingsPage'
 import { DocModeProvider } from './contexts/DocModeContext'
 import { ToolbarSizeProvider } from './contexts/ToolbarSizeContext'
-import { StorageProvider } from './contexts/StorageContext'
 
 /**
  * /docs/:series/*   — 文档路由，用 splat 捕获任意深度的 slug。
@@ -58,7 +57,6 @@ function App() {
   useBackButton()
 
   return (
-    <StorageProvider>
     <ToolbarSizeProvider>
     <DocModeProvider>
       <Routes>
@@ -83,7 +81,6 @@ function App() {
       </Routes>
     </DocModeProvider>
     </ToolbarSizeProvider>
-    </StorageProvider>
   )
 }
 

@@ -35,12 +35,17 @@ import SeriesCard from '../components/home/SeriesCard'
 import SeriesListItem from '../components/home/SeriesListItem'
 import PageToolbar from '../components/docs/PageToolbar'
 import { useReadingHistory } from '../hooks/useReadingHistory'
-import { getPreferencesRepo } from '@/data/bridge.js'
 
 type LayoutMode = 'list' | 'card'
 const LAYOUT_KEY = 'lz-home-layout'
 
-const loadLayoutMode = (): LayoutMode => 'list'
+const loadLayoutMode = (): LayoutMode => {
+  try {
+    const v = localStorage.getItem(LAYOUT_KEY)
+    if (v === 'card' || v === 'list') return v
+  } catch {}
+  return 'list'
+}
 
 /**
  * 多系列门户首页
@@ -56,7 +61,7 @@ const HomePage = () => {
 
   const setLayoutPersist = (mode: LayoutMode) => {
     setLayout(mode)
-    try { getPreferencesRepo()?.set(LAYOUT_KEY, mode) } catch {}
+    try { localStorage.setItem(LAYOUT_KEY, mode) } catch {}
   }
 
   const { items: recentItems } = useReadingHistory()

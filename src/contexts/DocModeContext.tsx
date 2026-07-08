@@ -12,7 +12,6 @@ import {
   setNetworkUrl,
   getSyncStatus,
   syncFromOSS,
-  normalizeSyncResult,
   readLocalDoc,
   type SyncStatus,
   type SyncResult,
@@ -31,7 +30,7 @@ interface DocModeState {
 interface DocModeContextValue extends DocModeState {
   switchMode: (mode: 'local' | 'network') => Promise<void>
   updateNetworkUrl: (url: string) => Promise<void>
-  triggerSync: (ossCfg?: OssConfig) => Promise<SyncResult>
+  triggerSync: (ossCfg?: OssConfig) => Promise<void>
   /** 模式感知的文档加载: 本地=插件读, 网络=fetch */
   loadDoc: (path: string) => Promise<string>
   loadJson: (path: string) => Promise<any>
@@ -96,13 +95,12 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, networkUrl: url }))
   }, [])
 
-  const triggerSync = useCallback(async (ossCfg?: OssConfig): Promise<SyncResult> => {
-    setState((s) => ({ ...s, syncing: true, syncResult: null }))
+  const triggerSync = useCallback(async (ossCfg?: OssConfig) => {
+    setState((s) => ({ ...s, syncing: true }))
     try {
-      const result = normalizeSyncResult(await syncFromOSS(ossCfg))
+      const result = await syncFromOSS(ossCfg)
       const status = await getSyncStatus()
       setState((s) => ({ ...s, syncing: false, syncStatus: status, syncResult: result }))
-      return result
     } catch (e) {
       setState((s) => ({ ...s, syncing: false, syncResult: null }))
       throw e

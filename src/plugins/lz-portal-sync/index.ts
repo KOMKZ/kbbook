@@ -63,10 +63,6 @@ export interface LZPortalSyncPlugin {
   setMode(options: { mode: string }): Promise<void>
   getNetworkUrl(): Promise<NetworkUrlResult>
   setNetworkUrl(options: { url: string }): Promise<void>
-  writeDebugLog(options: { json: string }): Promise<void>
-  readDebugLog(): Promise<{ json: string }>
-  pullKbdata(): Promise<{ success: boolean; key?: string; sizeBytes?: number; json?: string }>
-  setNetworkUrl(options: { url: string }): Promise<void>
   checkWebUpdate(): Promise<WebUpdateResult>
   getWebVersion(): Promise<WebVersionResult>
   addListener(eventName: 'syncProgress', callback: (data: SyncProgress) => void): Promise<PluginListenerHandle>
@@ -103,23 +99,13 @@ export interface OssConfig {
   accessKeySecret?: string
 }
 
-export const normalizeSyncResult = (result?: Partial<SyncResult> | null): SyncResult => ({
-  fileCount: result?.fileCount ?? 0,
-  totalSize: result?.totalSize ?? 0,
-  version: result?.version ?? '',
-  skipped: result?.skipped ?? false,
-  added: result?.added ?? 0,
-  updated: result?.updated ?? 0,
-  deleted: result?.deleted ?? 0,
-})
-
 export const syncFromOSS = async (ossCfg?: OssConfig): Promise<SyncResult> => {
   if (isNative()) {
     // Pass user config to native plugin if provided
     if (ossCfg?.accessKeyId) {
-      return normalizeSyncResult(await LZPortalSync.syncFromOSS(ossCfg))
+      return LZPortalSync.syncFromOSS(ossCfg)
     }
-    return normalizeSyncResult(await LZPortalSync.syncFromOSS())
+    return LZPortalSync.syncFromOSS()
   }
   // Web mode: attempt a quick connectivity check with user config
   if (ossCfg?.endpoint && ossCfg?.bucket && ossCfg?.accessKeyId) {
@@ -127,12 +113,12 @@ export const syncFromOSS = async (ossCfg?: OssConfig): Promise<SyncResult> => {
       const url = `${ossCfg.endpoint}/${ossCfg.bucket}/${ossCfg.path || ''}/manifest.json`
       const resp = await fetch(url)
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      return normalizeSyncResult({ version: 'web-check' })
+      return { fileCount: 0, totalSize: 0, version: 'web-check', skipped: false, added: 0, updated: 0, deleted: 0 }
     } catch (e: any) {
       throw new Error(`OSS 连接失败: ${e.message}. 请检查 OSS 配置 (Endpoint/Bucket/Key)`)
     }
   }
-  return normalizeSyncResult({ version: 'web', skipped: true })
+  return { fileCount: 0, totalSize: 0, version: 'web', skipped: true, added: 0, updated: 0, deleted: 0 }
 }
 
 export const listenSyncProgress = (
@@ -208,29 +194,4 @@ export const getWebVersion = async (): Promise<string> => {
     try { const r = await LZPortalSync.getWebVersion(); return r.version } catch { return '0' }
   }
   return '0'
-}
-
-/** Download kbdata JSON via native OSS SDK (bypasses WebView CORS). */
-export const pullKbdata = async (): Promise<{ success: boolean; key?: string; sizeBytes?: number; json?: string }> => {
-  if (isNative()) {
-    return LZPortalSync.pullKbdata()
-  }
-  return { success: false }
-}
-
-// === Debug log file persistence ===
-
-/** Write debug log entries to app's files dir (adb: run-as <app.package> cat files/debug-log.json). */
-export const writeDebugLog = async (json: string): Promise<void> => {
-  if (isNative()) {
-    try { await LZPortalSync.writeDebugLog({ json }) } catch {}
-  }
-}
-
-/** Read debug log from app's files dir. */
-export const readDebugLog = async (): Promise<string> => {
-  if (isNative()) {
-    try { const r = await LZPortalSync.readDebugLog(); return r.json } catch { return '[]' }
-  }
-  return '[]'
 }

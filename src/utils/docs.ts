@@ -92,70 +92,6 @@ export function resolveSlugFromParams(params: { slug?: string; group?: string; '
 // 文档内容缓存
 const docCache = new Map<string, string>()
 const metaCache = new Map<string, DocsMetaConfig>()
-
-/**
- * Build DocsMetaConfig tree from SQLite groups + articles tables.
- * Used as replacement for _meta.json file loading.
- */
-export async function loadDocsMetaFromRepo(seriesId: string, _version: string): Promise<DocsMetaConfig | null> {
-  try {
-    const { getDriver } = await import('@/data/bridge.js')
-    const { GroupRepo } = await import('@/data/repo/group.js')
-    const { ArticleRepo } = await import('@/data/repo/article.js')
-
-    const driver = getDriver()
-    if (!driver) return null
-
-    const groupRepo = new GroupRepo(driver)
-    const articleRepo = new ArticleRepo(driver)
-
-    const groups = await groupRepo.findBySeries(seriesId)
-    const articles = await articleRepo.findBySeries(seriesId)
-
-    // Build parent → children map
-    const childrenMap = new Map<string | null, { groups: typeof groups; articles: typeof articles }>()
-    for (const g of groups) {
-      const key: string | null = g.parentGroupId ?? null
-      if (!childrenMap.has(key)) childrenMap.set(key, { groups: [], articles: [] })
-      childrenMap.get(key)!.groups.push(g)
-    }
-    for (const a of articles) {
-      const key: string | null = a.groupId ?? null
-      if (!childrenMap.has(key)) childrenMap.set(key, { groups: [], articles: [] })
-      childrenMap.get(key)!.articles.push(a)
-    }
-
-    // Recursively build DocMeta tree
-    function buildTree(parentId: string | null): DocMeta[] {
-      const items: DocMeta[] = []
-      const children = childrenMap.get(parentId)
-      if (!children) return items
-
-      for (const g of children.groups) {
-        items.push({
-          slug: g.slug,
-          title: g.title,
-          order: g.sortOrder,
-          isGroup: true,
-          items: buildTree(g.id),
-        })
-      }
-      for (const a of children.articles) {
-        items.push({
-          slug: a.slug,
-          title: a.title,
-          order: 0,
-        })
-      }
-      items.sort((a, b) => a.order - b.order)
-      return items
-    }
-
-    return { title: seriesId, items: buildTree(null) }
-  } catch {
-    return null
-  }
-}
 let versionsCache: VersionsConfig | null = null
 
 /**
@@ -229,26 +165,26 @@ export function getResolvedVersions(versions: VersionInfo[]): ResolvedVersionInf
 /**
  * 加载文档目录元数据
  */
-export async function loadDocsMeta(version: string, lang?: LanguageCode, seriesId?: string): Promise<DocsMetaConfig> {
+export async function loadDocsMeta(version: string, lang?: LanguageCode): Promise<DocsMetaConfig> {
   const language = lang || getCurrentLanguage()
-  const cacheKey = `meta-${language}-${version}-${seriesId || 'noseries'}`
-
+  const cacheKey = `meta-${language}-${version}`
+  
   if (metaCache.has(cacheKey)) {
     return metaCache.get(cacheKey)!
   }
 
-  // SQLite Repo (StorageProvider guarantees driver is ready)
-  if (seriesId) {
-    const fromRepo = await loadDocsMetaFromRepo(seriesId, version)
-    if (fromRepo && fromRepo.items.length > 0) {
-      metaCache.set(cacheKey, fromRepo)
-      return fromRepo
+  try {
+    const response = await fetch(`${_docBaseUrl}/docs/${language}/${version}/_meta.json`)
+    if (!response.ok) {
+      throw new Error(`Failed to load _meta.json for ${language}/${version}`)
     }
-  }
-
-  // Empty — return minimal fallback (don't cache)
-  return {
-    title: '文档',
+    const meta: DocsMetaConfig = await response.json()
+    metaCache.set(cacheKey, meta)
+    return meta
+  } catch (error) {
+    console.error('Error loading docs meta:', error)
+    return {
+      title: '文档',
       items: [
         {
           slug: 'getting-started',
@@ -265,6 +201,7 @@ export async function loadDocsMeta(version: string, lang?: LanguageCode, seriesI
         },
       ],
     }
+  }
 }
 
 /**
@@ -273,15 +210,9 @@ export async function loadDocsMeta(version: string, lang?: LanguageCode, seriesI
 export async function loadDocContent(version: string, slug: string, lang?: LanguageCode): Promise<string> {
   const language = lang || getCurrentLanguage()
   const cacheKey = `${language}/${version}/${slug}`
-
+  
   if (docCache.has(cacheKey)) {
-    const cached = docCache.get(cacheKey)!
-    // Defend against stale HTML cached before SPA-fallback fix was deployed
-    if (cached.includes('@vite/client') || cached.trimStart().startsWith('<!doctype')) {
-      docCache.delete(cacheKey)
-    } else {
-      return cached
-    }
+    return docCache.get(cacheKey)!
   }
 
   try {
@@ -289,9 +220,6 @@ export async function loadDocContent(version: string, slug: string, lang?: Langu
     if (_readLocalDoc) {
       try {
         const content = await _readLocalDoc(`${language}/${version}/${slug}`)
-        if (content.trimStart().startsWith('<') || content.includes('@vite/client')) {
-          throw new Error('HTML fallback from readLocalDoc')
-        }
         docCache.set(cacheKey, content)
         return content
       } catch {
@@ -308,12 +236,7 @@ export async function loadDocContent(version: string, slug: string, lang?: Langu
     const contentType = response.headers.get('content-type') || ''
     const content = await response.text()
     const looksLikeHtmlFallback =
-      contentType.includes('text/html') ||
-      content.trimStart().startsWith('<!doctype') ||
-      content.trimStart().startsWith('<!DOCTYPE') ||
-      content.includes('@vite/client') ||
-      content.trimStart().startsWith('<script') ||
-      content.trimStart().startsWith('<html')
+      contentType.includes('text/html') || content.trimStart().startsWith('<!doctype') || content.trimStart().startsWith('<!DOCTYPE')
     if (looksLikeHtmlFallback) {
       throw new Error(`Doc not found (got SPA fallback): ${slug}.md`)
     }
@@ -354,31 +277,16 @@ let seriesCache: SeriesRegistry | null = null
  */
 export async function loadSeriesRegistry(): Promise<SeriesRegistry> {
   if (seriesCache) return seriesCache
-  // SQLite Repo (StorageProvider guarantees driver is ready)
   try {
-    const { getDriver } = await import('@/data/bridge.js')
-    const driver = getDriver()
-    if (driver) {
-      const { SeriesRepo } = await import('@/data/repo/series.js')
-      const repo = new SeriesRepo(driver)
-      const all = await repo.findAll()
-      if (all.length > 0) {
-        const data: SeriesRegistry = {
-          defaultSeries: all[0].id,
-          series: all.map((s: any) => ({
-            id: s.id, title: s.title, shortTitle: s.shortTitle, tagline: s.tagline,
-            description: s.description,
-            version: s.version || s._version || 'v0.1.0',
-            language: s.language || s._language || 'zh-CN',
-            color: s.color, icon: s.icon, enabled: s.enabled,
-          })),
-        }
-        seriesCache = data
-        return data
-      }
-    }
-  } catch {}
-  return { defaultSeries: 'llm', series: [] }
+    const response = await fetch(`${_docBaseUrl}/docs/series.json`)
+    if (!response.ok) throw new Error('Failed to load series.json')
+    const data = (await response.json()) as SeriesRegistry
+    seriesCache = data
+    return data
+  } catch (error) {
+    console.error('Error loading series registry:', error)
+    return { defaultSeries: 'llm', series: [] }
+  }
 }
 
 /**
@@ -398,7 +306,7 @@ export async function loadSeriesMeta(seriesId: string): Promise<DocsMetaConfig> 
   if (!s || !s.version) {
     throw new Error(`Series ${seriesId} has no version mapping`)
   }
-  return loadDocsMeta(s.version, (s.language as LanguageCode) ?? undefined, seriesId)
+  return loadDocsMeta(s.version, (s.language as LanguageCode) ?? undefined)
 }
 
 /**

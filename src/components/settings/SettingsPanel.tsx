@@ -9,7 +9,7 @@
  * Left sidebar: fixed, independent scroll
  * Right content: scrolls independently
  */
-import { useState, useEffect, useRef, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useMediaQuery } from '@mui/material'
 import Box from '@mui/material/Box'
 import List from '@mui/material/List'
@@ -19,6 +19,7 @@ import ListItemText from '@mui/material/ListItemText'
 import Tooltip from '@mui/material/Tooltip'
 import IconButton from '@mui/material/IconButton'
 import Typography from '@mui/material/Typography'
+import Switch from '@mui/material/Switch'
 import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
@@ -27,11 +28,11 @@ import Paper from '@mui/material/Paper'
 import CircularProgress from '@mui/material/CircularProgress'
 import LinearProgress from '@mui/material/LinearProgress'
 import CloudSyncIcon from '@mui/icons-material/CloudSync'
-import BugReportIcon from '@mui/icons-material/BugReport'
-import { getPreferencesRepo } from '@/data/bridge.js'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import WifiIcon from '@mui/icons-material/Wifi'
+import WifiOffIcon from '@mui/icons-material/WifiOff'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import SystemUpdateIcon from '@mui/icons-material/SystemUpdate'
 import AddIcon from '@mui/icons-material/Add'
@@ -43,7 +44,7 @@ import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import { useDocMode } from '../../contexts/DocModeContext'
 import { useToolbarSizeCtx } from '../../contexts/ToolbarSizeContext'
-import { listenSyncProgress, checkWebUpdate, getWebVersion, saveOssConfig as saveOssConfigNative, normalizeSyncResult, type SyncProgress, type SyncResult } from '../../plugins/lz-portal-sync'
+import { listenSyncProgress, checkWebUpdate, getWebVersion, saveOssConfig as saveOssConfigNative, type SyncProgress } from '../../plugins/lz-portal-sync'
 import { siteConfig } from '../../config/site'
 
 declare const __BUILD_TIME__: string
@@ -105,43 +106,13 @@ function ToolbarSizeSection() {
 const NAV_ITEMS = [
   { id: 'general', label: '通用',   icon: <SettingsIcon fontSize="small" /> },
   { id: 'sync',    label: '同步',   icon: <SyncIcon fontSize="small" /> },
-  { id: 'debug',   label: '调试',   icon: <BugReportIcon fontSize="small" /> },
+  { id: 'oss',     label: 'OSS',    icon: <CloudSyncIcon fontSize="small" /> },
   { id: 'version', label: '版本',   icon: <InfoIcon fontSize="small" /> },
 ] as const
 
 type NavId = (typeof NAV_ITEMS)[number]['id']
 
 const SIDEBAR_WIDTH = 180
-
-interface DocSyncDisplayResult {
-  added: number
-  updated: number
-  deleted: number
-  fileCount: number
-  time: string
-  skipped?: boolean
-  error?: string
-}
-
-function toDocSyncDisplayResult(result?: Partial<SyncResult> | null): DocSyncDisplayResult {
-  const safe = normalizeSyncResult(result)
-  return {
-    added: safe.added,
-    updated: safe.updated,
-    deleted: safe.deleted,
-    fileCount: safe.fileCount,
-    skipped: safe.skipped,
-    time: new Date().toLocaleTimeString(),
-  }
-}
-
-async function writeDocSyncLog(level: 'info' | 'warn' | 'error', message: string, detail?: unknown) {
-  try {
-    const { debugLog } = await import('@/data/debug.js')
-    debugLog[level]('doc-sync', message, detail)
-    debugLog.flush()
-  } catch {}
-}
 
 // ============================================================
 // OSS Config — defaults + localStorage persistence
@@ -150,122 +121,25 @@ async function writeDocSyncLog(level: 'info' | 'warn' | 'error', message: string
 const OSS_DEFAULTS = {
   endpoint: (typeof __OSS_ENDPOINT__ !== 'undefined' && __OSS_ENDPOINT__) || 'https://oss-cn-shenzhen.aliyuncs.com',
   bucket: (typeof __OSS_BUCKET__ !== 'undefined' && __OSS_BUCKET__) || 'yogan-static',
-  path: (typeof __OSS_PATH__ !== 'undefined' && __OSS_PATH__) || 'lz-learn-portal-sqllite-data',
+  path: (typeof __OSS_PATH__ !== 'undefined' && __OSS_PATH__) || 'lz-learn-portal-data',
   accessKeyId: (typeof __OSS_ACCESS_KEY_ID__ !== 'undefined' && __OSS_ACCESS_KEY_ID__) || '',
   accessKeySecret: (typeof __OSS_ACCESS_KEY_SECRET__ !== 'undefined' && __OSS_ACCESS_KEY_SECRET__) || '',
 }
 
-function regionFromEndpoint(ep: string): string {
-  const m = ep.match(/\/\/(oss-[^.]+)\./)
-  return m ? m[1] : 'oss-cn-shenzhen'
-}
-
 function loadOssConfig(): typeof OSS_DEFAULTS {
-  const baked = { ...OSS_DEFAULTS }
-  // Merge persisted config (user overrides baked-in build defaults)
   try {
-    const stored = localStorage.getItem('lz-oss-config')
-    if (stored) Object.assign(baked, JSON.parse(stored))
+    const raw = localStorage.getItem('kbbook-oss-config')
+    if (raw) {
+      const saved = JSON.parse(raw)
+      // Only use localStorage if it has actual values (not all empty)
+      if (Object.values(saved).some((v: any) => v)) return { ...OSS_DEFAULTS, ...saved }
+    }
   } catch {}
-  return baked
+  return { ...OSS_DEFAULTS }
 }
 
 function saveOssConfig(cfg: typeof OSS_DEFAULTS) {
-  try {
-    localStorage.setItem('lz-oss-config', JSON.stringify(cfg))
-    // Also write to SQLite prefs so pullLatest can read it
-    getPreferencesRepo()?.set('kbbook-oss-config', cfg)
-  } catch {}
-}
-
-// ============================================================
-// Debug Panel
-// ============================================================
-
-function DebugPanel() {
-  const [entries, setEntries] = useState<Array<{id:number;timestamp:number;level:string;module:string;message:string;detail?:string}>>([])
-  const [filter, setFilter] = useState('')
-  const [autoRefresh, setAutoRefresh] = useState(true)
-
-  useEffect(() => {
-    if (!autoRefresh) return
-    const timer = setInterval(async () => {
-      try {
-        const { debugLog } = await import('@/data/debug.js')
-        setEntries(debugLog.getRecent(200, filter || undefined))
-      } catch {}
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [autoRefresh, filter])
-
-  useEffect(() => {
-    // Initial load
-    import('@/data/debug.js').then(m => setEntries(m.debugLog.getRecent(200)))
-  }, [])
-
-  const levelColor = (l: string) => l === 'error' ? 'error' : l === 'warn' ? '#ed6c02' : l === 'info' ? '#1976d2' : '#666'
-
-  return (
-    <>
-      <Section title="调试日志" subtitle={`${entries.length} 条记录 · 自动刷新${autoRefresh ? '开启' : '关闭'}`} icon={<BugReportIcon color="primary" />}>
-        <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-          <TextField size="small" placeholder="过滤模块…" value={filter}
-            onChange={e => setFilter(e.target.value)} sx={{ flex: 1 }} />
-          <Button size="small" variant={autoRefresh ? 'contained' : 'outlined'}
-            onClick={() => setAutoRefresh(!autoRefresh)}>
-            {autoRefresh ? '⏸ 暂停' : '▶ 刷新'}
-          </Button>
-          <Button size="small" onClick={async () => {
-            const { debugLog } = await import('@/data/debug.js')
-            debugLog.clear()
-            setEntries([])
-          }}>清空</Button>
-          <Button size="small" onClick={async () => {
-            const { debugLog } = await import('@/data/debug.js')
-            const json = debugLog.export()
-            // Copy to clipboard via navigator
-            try {
-              await navigator.clipboard.writeText(json)
-            } catch {
-              // Fallback: show in a dialog
-              const blob = new Blob([json], {type:'application/json'})
-              const a = document.createElement('a')
-              a.href = URL.createObjectURL(blob)
-              a.download = 'kbbook-debug-log.json'
-              a.click()
-            }
-          }}>导出</Button>
-        </Box>
-        <Paper variant="outlined" sx={{ maxHeight: 400, overflow: 'auto', p: 1, bgcolor: '#1e1e1e', fontFamily: 'monospace', fontSize: 11 }}>
-          {entries.length === 0 ? (
-            <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>暂无日志</Typography>
-          ) : (
-            entries.map(e => (
-              <Box key={e.id} sx={{ py: 0.25, borderBottom: '1px solid #333', lineHeight: 1.4 }}>
-                <Typography component="span" sx={{ color: '#888', mr: 1 }}>
-                  {new Date(e.timestamp).toLocaleTimeString()}
-                </Typography>
-                <Typography component="span" sx={{ color: levelColor(e.level), fontWeight: 'bold', mr: 1 }}>
-                  {e.level.toUpperCase()}
-                </Typography>
-                <Typography component="span" sx={{ color: '#4ec9b0', mr: 1 }}>
-                  [{e.module}]
-                </Typography>
-                <Typography component="span" sx={{ color: '#d4d4d4' }}>
-                  {e.message}
-                </Typography>
-                {e.detail && (
-                  <Typography component="span" sx={{ color: '#888', ml: 0.5 }}>
-                    {e.detail.length > 200 ? e.detail.substring(0, 200) + '…' : e.detail}
-                  </Typography>
-                )}
-              </Box>
-            ))
-          )}
-        </Paper>
-      </Section>
-    </>
-  )
+  try { localStorage.setItem('kbbook-oss-config', JSON.stringify(cfg)) } catch {}
 }
 
 // ============================================================
@@ -274,16 +148,14 @@ function DebugPanel() {
 
 const SettingsPanel = () => {
   const [active, setActive] = useState<NavId>('general')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(() => { try { return localStorage.getItem("kbbook-settings-sidebar") !== "0" } catch { return true } })
   const isNarrow = useMediaQuery('(max-width:600px)')
-  const { networkUrl, syncStatus, syncing, triggerSync, syncResult } = useDocMode()
+  const { mode, networkUrl, syncStatus, syncing, switchMode, updateNetworkUrl, triggerSync, syncResult } = useDocMode()
+  const [urlInput, setUrlInput] = useState(networkUrl)
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
-  const [sqliteResult, setSqliteResult] = useState<{ tables: number; rows: number; sizeKB: string; time: string } | null>(null)
-  const [docResult, setDocResult] = useState<DocSyncDisplayResult | null>(null)
   const [webVersion, setWebVersion] = useState<string>('...')
   const [appVersion, setAppVersion] = useState<string>('...')
-  const docSyncInFlight = useRef(false)
 
   // OSS config
   const [ossCfg, setOssCfg] = useState(loadOssConfig)
@@ -304,12 +176,8 @@ const SettingsPanel = () => {
   }
 
   const fillOssDefaults = () => {
-    const cfg = { ...OSS_DEFAULTS }
-    setOssCfg(cfg)
-    setOssSaved(cfg)
-    saveOssConfig(cfg)
-    saveOssConfigNative(cfg).catch(() => {})
-    setToast({ message: '已填入默认值并保存', severity: 'success' })
+    setOssCfg({ ...OSS_DEFAULTS })
+    setToast({ message: '已填入默认值，请点击「保存配置」', severity: 'success' })
   }
 
   useEffect(() => {
@@ -329,55 +197,43 @@ const SettingsPanel = () => {
     fetch('/version.json').then(r => r.json()).then(d => setWebVersion(d.version || '0.1.0')).catch(() => setWebVersion('0.1.0'))
   }, [])
 
-  // On mount: restore OSS config from Repo
+  // On mount: try to restore OSS config from native SharedPreferences
   useEffect(() => {
-    getPreferencesRepo()?.get<typeof OSS_DEFAULTS>('kbbook-oss-config').then((saved) => {
-      if (saved && saved.bucket) {
-        const cfg = { ...OSS_DEFAULTS, ...saved }
-        setOssCfg(cfg)
-        setOssSaved(cfg)
+    try {
+      const saved = localStorage.getItem('kbbook-oss-config')
+      if (!saved) {
+        // localStorage empty — config might be in native prefs, defaults will show
+        setOssCfg(loadOssConfig())
+        setOssSaved(loadOssConfig())
       }
-    }).catch(() => {})
+    } catch {}
   }, [])
 
+  const isLocal = mode === 'local'
   const isSyncing = syncing || (progress != null && progress.stage !== 'done')
   const progressPercent = progress?.percent ?? 0
 
-  const handleDocSync = async () => {
-    if (docSyncInFlight.current) {
-      await writeDocSyncLog('warn', '忽略重复文档同步点击')
-      return
-    }
-    docSyncInFlight.current = true
-    setProgress(null)
-    setDocResult(null)
-    try {
-      await writeDocSyncLog('info', '开始文档同步', { bucket: ossCfg.bucket, path: ossCfg.path, hasKey: !!ossCfg.accessKeyId })
-      const result = toDocSyncDisplayResult(await triggerSync(ossCfg))
-      setDocResult(result)
-      await writeDocSyncLog('info', '文档同步完成', result)
-      if (result.skipped) {
-        setToast({ message: '已是最新版本', severity: 'success' })
-      } else {
-        setToast({ message: `同步完成: +${result.added} ~${result.updated} -${result.deleted}`, severity: 'success' })
-      }
-    } catch (e: any) {
-      const message = e?.message || '同步失败'
-      setProgress(null)
-      setDocResult({ added: 0, updated: 0, deleted: 0, fileCount: 0, time: new Date().toLocaleTimeString(), error: message })
-      setToast({ message, severity: 'error' })
-      await writeDocSyncLog('error', '文档同步失败', { message, stack: e?.stack })
-    } finally {
-      docSyncInFlight.current = false
-    }
+  const handleModeToggle = async () => {
+    const newMode = isLocal ? 'network' : 'local'
+    await switchMode(newMode)
+    setToast({ message: `已切换至 ${newMode === 'local' ? '本地离线' : '网络直连'} 模式`, severity: 'success' })
   }
 
-  // Keep the persistent result box in sync if another UI path triggers document sync.
-  useEffect(() => {
-    if (!syncing && syncResult) {
-      setDocResult(toDocSyncDisplayResult(syncResult))
+  const handleUrlSave = async () => {
+    await updateNetworkUrl(urlInput)
+    setToast({ message: '网络地址已保存', severity: 'success' })
+  }
+
+  const handleSync = async () => {
+    setProgress(null)
+    try {
+      await triggerSync(ossCfg)
+      setToast({ message: 'OSS 同步完成', severity: 'success' })
+    } catch (e: any) {
+      setProgress(null)
+      setToast({ message: e?.message || 'OSS 同步失败，请检查网络连接', severity: 'error' })
     }
-  }, [syncing, syncResult])
+  }
 
   // ---- per-nav content ----
 
@@ -386,13 +242,25 @@ const SettingsPanel = () => {
       case 'general':
         return (
           <>
+            <Section
+              title="阅读模式"
+              subtitle={isLocal ? '本地离线 — APK 内置 + OSS 同步' : '网络直连 — 连接开发服务器'}
+              icon={isLocal ? <WifiOffIcon color="action" /> : <WifiIcon color="primary" />}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography variant="body2" color="text.secondary">
+                  当前: {isLocal ? '离线模式' : '在线模式'}
+                </Typography>
+                <Switch checked={!isLocal} onChange={handleModeToggle} />
+              </Box>
+            </Section>
             <ToolbarSizeSection />
             <Section title="外观" subtitle="主题、工具栏自动隐藏">
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="body2" color="text.secondary">工具栏无操作后自动隐藏（秒，0=不隐藏）：</Typography>
                 <TextField size="small" type="number" sx={{ width: 70 }}
-                  defaultValue="10"
-                  onChange={(e) => { const v = Math.max(0, parseInt(e.target.value) || 0); getPreferencesRepo()?.set('kbbook-toolbar-autohide', String(v)); setToast({message: `工具栏自动隐藏: ${v === 0 ? '关闭' : v + '秒'}`, severity:'success'}); }}
+                  defaultValue={localStorage.getItem('kbbook-toolbar-autohide') || '10'}
+                  onChange={(e) => { const v = Math.max(0, parseInt(e.target.value) || 0); localStorage.setItem('kbbook-toolbar-autohide', String(v)); setToast({message: `工具栏自动隐藏: ${v === 0 ? '关闭' : v + '秒'}`, severity:'success'}); }}
                   inputProps={{ min: 0, max: 300, step: 5 }}
                 />
                 <Typography variant="caption" color="text.secondary">秒</Typography>
@@ -404,10 +272,24 @@ const SettingsPanel = () => {
       case 'sync':
         return (
           <>
-            {/* OSS 同步（文档 + 数据） */}
             <Section
-              title="OSS 同步"
-              subtitle="从阿里云 OSS 拉取最新文档和数据（增量 MD5 diff）"
+              title="服务器地址"
+              subtitle="输入开发服务器地址"
+              icon={<WifiIcon color="primary" />}
+            >
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <TextField size="small" fullWidth value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  placeholder="http://localhost:3004"
+                />
+                <Button variant="contained" onClick={handleUrlSave} size="small">保存</Button>
+              </Box>
+            </Section>
+
+            {/* OSS sync — always available regardless of mode */}
+            <Section
+              title="文档同步 (OSS)"
+              subtitle="从阿里云 OSS 拉取最新文档到本地"
               icon={<CloudSyncIcon color="primary" />}
             >
               {syncStatus.lastSyncTime && (
@@ -435,103 +317,33 @@ const SettingsPanel = () => {
                   </Box>
                   {!syncResult.skipped && (
                     <Typography variant="caption" color="text.secondary" sx={{ ml: 3.5 }}>
-                      +{syncResult.added ?? 0} 新增 · ~{syncResult.updated ?? 0} 更新 · -{syncResult.deleted ?? 0} 删除
+                      {syncResult.added > 0 && `+${syncResult.added} 新增 `}
+                      {syncResult.updated > 0 && `~${syncResult.updated} 更新 `}
+                      {syncResult.deleted > 0 && `-${syncResult.deleted} 删除 `}
+                      {syncResult.added === 0 && syncResult.updated === 0 && syncResult.deleted === 0 && '无变化'}
                     </Typography>
                   )}
                 </Box>
               )}
 
               <Button variant="outlined" startIcon={isSyncing ? <CircularProgress size={16} /> : <CloudSyncIcon />}
-                onClick={handleDocSync} disabled={isSyncing} fullWidth>
-                {isSyncing ? '同步中...' : '立即同步文档'}
+                onClick={handleSync} disabled={isSyncing} fullWidth>
+                {isSyncing ? '同步中...' : '立即同步'}
               </Button>
-              {docResult && (
-                <Box sx={{ mt: 1, p: 1.5, borderRadius: 1, bgcolor: docResult.error ? 'error.light' : 'success.light', color: docResult.error ? 'error.contrastText' : 'success.contrastText' }}>
-                  <Typography variant="body2" fontWeight="bold">
-                    {docResult.error
-                      ? `同步失败: ${docResult.error}`
-                      : `${docResult.skipped ? '已是最新版本' : '同步完成'}: ${docResult.fileCount} 文件 · ${docResult.time}`}
-                  </Typography>
-                  {!docResult.error && (
-                    <Typography variant="caption" sx={{ mt: 0.5, display: 'block' }}>
-                      +{docResult.added} 新增 · ~{docResult.updated} 更新 · -{docResult.deleted} 删除
-                    </Typography>
-                  )}
-                </Box>
-              )}
-              <Button variant="outlined" size="small" sx={{ mt: 1 }} fullWidth
-                onClick={async () => {
-                  const { debugLog } = await import('@/data/debug.js')
-                  try {
-                    const { getDriver, getPreferencesRepo } = await import('@/data/bridge.js')
-                    const driver = getDriver()
-                    const prefs = getPreferencesRepo()
-                    if (!driver || !prefs) { setToast({ message: '存储未就绪', severity: 'error' }); debugLog.error('sync','driver or prefs not ready'); return }
-                    const cfg = await prefs.get<Record<string, string>>('kbbook-oss-config')
-                    debugLog.info('sync', 'SQLite sync: OSS config loaded', { bucket: cfg?.bucket, path: cfg?.path, hasKey: !!cfg?.accessKeyId, endpoint: cfg?.endpoint })
-                    if (!cfg?.bucket) { setToast({ message: '请先配置 OSS 参数', severity: 'error' }); debugLog.error('sync','bucket missing from config'); return }
-                    setToast({ message: '正在从 OSS 拉取数据...', severity: 'success' })
-                    const { pullLatest, mergeFromOss } = await import('@/data/sync/oss.js')
-                    const { exportDatabase, importDatabase } = await import('@/data/migration/exporter.js')
-                    const region = regionFromEndpoint(cfg.endpoint || 'https://oss-cn-shenzhen.aliyuncs.com')
-                    debugLog.info('sync', `pullLatest: bucket=${cfg.bucket} region=${region} path=${cfg.path}`)
-                    const result = await pullLatest({
-                      bucket: cfg.bucket,
-                      region,
-                      endpoint: cfg.endpoint,
-                      accessKeyId: cfg.accessKeyId, accessKeySecret: cfg.accessKeySecret,
-                      path: cfg.path,
-                    })
-                    if (!result.success || !result.dump) {
-                      const errMsg = `拉取失败: ${result.error}`
-                      setToast({ message: errMsg, severity: 'error' })
-                      debugLog.error('sync', errMsg)
-                      return
-                    }
-                    debugLog.info('sync', `pullLatest OK: ${result.sizeBytes} bytes, merging...`)
-                    const localDump = await exportDatabase(driver)
-                    const localRows = Object.values(localDump.tables).reduce((s,r)=>s+r.length,0)
-                    debugLog.info('sync', `local dump: ${Object.keys(localDump.tables).length} tables, ${localRows} rows`)
-                    const merged = mergeFromOss(localDump, result.dump)
-                    await importDatabase(driver, merged)
-                    const remoteTables = Object.keys(result.dump!.tables).length
-                    const remoteRows = Object.values(result.dump!.tables).reduce((s,r)=>s+r.length,0)
-                    const sizeKB = ((result.sizeBytes || 0) / 1024).toFixed(1)
-                    const now = new Date().toLocaleTimeString()
-                    setSqliteResult({ tables: remoteTables, rows: remoteRows, sizeKB, time: now })
-                    // Clear docs cache so nav sidebar picks up new articles
-                    const { clearDocsCache } = await import('@/utils/docs.js')
-                    clearDocsCache()
-                    setToast({ message: `同步完成: ${remoteTables} 表 ${remoteRows} 行 (${sizeKB} KB)`, severity: 'success' })
-                    debugLog.info('sync', `SQLite sync done: ${remoteTables}t/${remoteRows}r, local was ${localRows}r`)
-                    debugLog.flush()
-                  } catch (e) {
-                    const msg = '数据同步异常: ' + (e as Error).message
-                    setToast({ message: msg, severity: 'error' })
-                    debugLog.error('sync', msg, (e as Error).stack)
-                    debugLog.flush()
-                  }
-                }}
-              >同步 SQLite 数据</Button>
-              {sqliteResult && (
-                <Box sx={{ mt: 1, p: 1.5, bgcolor: 'success.light', borderRadius: 1, color: 'success.contrastText' }}>
-                  <Typography variant="body2" fontWeight="bold">
-                    上次同步: {sqliteResult.time} — {sqliteResult.tables} 表, {sqliteResult.rows} 行 ({sqliteResult.sizeKB} KB)
-                  </Typography>
-                  <Typography variant="caption" sx={{ mt: 0.5, display: 'block' }}>
-                    提示: 结构数据已更新。切换页面或下拉刷新查看最新内容。
-                  </Typography>
-                </Box>
-              )}
             </Section>
+          </>
+        )
 
-            {/* OSS 配置 */}
-            <Section title="OSS 配置" subtitle="对象存储连接参数"
+      case 'oss':
+        return (
+          <>
+            <Section title="OSS 配置" subtitle="对象存储连接参数（默认值来自系统配置，修改后优先使用你的值）"
               icon={<CloudSyncIcon color="primary" />}>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 <TextField label="Endpoint" size="small" fullWidth
                   value={ossCfg.endpoint}
-                  onChange={(e) => updateOssField('endpoint', e.target.value)} />
+                  onChange={(e) => updateOssField('endpoint', e.target.value)}
+                  placeholder="https://oss-cn-shenzhen.aliyuncs.com" />
                 <TextField label="Bucket" size="small" fullWidth
                   value={ossCfg.bucket}
                   onChange={(e) => updateOssField('bucket', e.target.value)} />
@@ -574,12 +386,6 @@ const SettingsPanel = () => {
           </>
         )
 
-
-      case 'debug':
-        return (
-          <DebugPanel />
-        )
-
       case 'version':
         return (
           <>
@@ -609,7 +415,7 @@ const SettingsPanel = () => {
                 <Box className="kv"><Typography variant="body2" color="text.secondary">前端版本</Typography><Typography variant="body2" fontWeight={600}>{webVersion}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">App 版本</Typography><Typography variant="body2" fontWeight={600}>{appVersion}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">品牌</Typography><Typography variant="body2" fontWeight={600}>{siteConfig.name}</Typography></Box>
-                <Box className="kv"><Typography variant="body2" color="text.secondary">模式</Typography><Typography variant="body2" fontWeight={600}>本机 SQLite</Typography></Box>
+                <Box className="kv"><Typography variant="body2" color="text.secondary">模式</Typography><Typography variant="body2" fontWeight={600}>{isLocal ? '本地离线' : '网络直连'}</Typography></Box>
                 <Box className="kv"><Typography variant="body2" color="text.secondary">网络地址</Typography><Typography variant="body2" fontWeight={600}>{networkUrl}</Typography></Box>
                 {syncStatus.lastSyncTime && (
                   <>
@@ -653,7 +459,7 @@ const SettingsPanel = () => {
               设置
             </Typography>
           )}
-          <IconButton size="small" onClick={() => setSidebarOpen((v) => { const n = !v; getPreferencesRepo()?.set("kbbook-settings-sidebar", n ? "1" : "0"); return n })}>
+          <IconButton size="small" onClick={() => setSidebarOpen((v) => { const n = !v; try { localStorage.setItem("kbbook-settings-sidebar", n ? "1" : "0") } catch {}; return n })}>
             {sidebarOpen ? <ChevronLeftIcon fontSize="small" /> : <MenuIcon fontSize="small" />}
           </IconButton>
         </Box>
@@ -661,7 +467,7 @@ const SettingsPanel = () => {
           <List dense disablePadding>
             {NAV_ITEMS.map((item) => (
               <ListItemButton key={item.id} selected={active === item.id}
-                onClick={() => { setActive(item.id); if (isNarrow) { setSidebarOpen(false) } }}
+                onClick={() => { setActive(item.id); if (isNarrow) { try { localStorage.setItem("kbbook-settings-sidebar", "0") } catch {}; setSidebarOpen(false) } }}
                 sx={{ mx: 0.5, borderRadius: 1, mb: 0.25,
                   '&.Mui-selected': { bgcolor: 'action.selected', '&:hover': { bgcolor: 'action.selected' } } }}>
                 <ListItemIcon sx={{ minWidth: 36, color: active === item.id ? 'primary.main' : 'text.secondary' }}>
@@ -678,7 +484,7 @@ const SettingsPanel = () => {
 
       {/* Floating expand button when sidebar collapsed */}
       {!sidebarOpen && (
-        <IconButton size="small" onClick={() => { setSidebarOpen(true) }}
+        <IconButton size="small" onClick={() => { try { localStorage.setItem("kbbook-settings-sidebar", "1") } catch {}; setSidebarOpen(true) }}
           sx={{ position: 'fixed', top: 'calc(var(--header-height, 64px) + 8px)', left: 8, zIndex: 20,
             bgcolor: 'background.paper', boxShadow: 2,
             '&:hover': { bgcolor: 'action.hover' } }}>

@@ -1,10 +1,7 @@
-/**
- * useReadingHistory — SQLite-backed reading history.
- * All reads/writes via ReadingHistoryRepo. No localStorage.
- */
-import { useState, useEffect, useCallback } from 'react'
-import { getDriver } from '@/data/bridge.js'
-import { ReadingHistoryRepo } from '@/data/repo/reading.js'
+import { useState, useCallback, useEffect } from 'react'
+
+const STORAGE_KEY = 'kbbook-reading-history'
+const MAX_ITEMS = 50
 
 export interface HistoryEntry {
   slug: string
@@ -13,52 +10,45 @@ export interface HistoryEntry {
   timestamp: number
 }
 
+function loadAll(): HistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) return JSON.parse(raw) as HistoryEntry[]
+  } catch {}
+  return []
+}
+
+function saveAll(items: HistoryEntry[]) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)) } catch {}
+}
+
 export function useReadingHistory() {
   const [items, setItems] = useState<HistoryEntry[]>([])
 
-  useEffect(() => {
-    let cancelled = false
-    const driver = getDriver()
-    if (!driver) return
-    const repo = new ReadingHistoryRepo(driver)
-    repo.getRecent(50).then((entries) => {
-      if (!cancelled) setItems(entries.map((e) => ({
-        slug: e.slug, title: e.title || e.slug,
-        seriesId: e.seriesId, timestamp: e.readAt,
-      })))
-    }).catch(() => {})
-    return () => { cancelled = true }
-  }, [])
+  useEffect(() => { setItems(loadAll()) }, [])
 
   const addEntry = useCallback((slug: string, title: string, seriesId: string) => {
     if (!slug || !title) return
-    const driver = getDriver()
-    if (!driver) return
-    const repo = new ReadingHistoryRepo(driver)
-    repo.addEntry(slug, seriesId, title).then(() => {
-      repo.getRecent(50).then((entries) => {
-        setItems(entries.map((e) => ({
-          slug: e.slug, title: e.title || e.slug,
-          seriesId: e.seriesId, timestamp: e.readAt,
-        })))
-      }).catch(() => {})
-    }).catch(() => {})
+    setItems((prev) => {
+      const filtered = prev.filter((e) => e.slug !== slug)
+      const entry: HistoryEntry = { slug, title, seriesId, timestamp: Date.now() }
+      const next = [entry, ...filtered].slice(0, MAX_ITEMS)
+      saveAll(next)
+      return next
+    })
   }, [])
 
   const removeEntry = useCallback((slug: string) => {
-    const driver = getDriver()
-    if (!driver) return
-    const repo = new ReadingHistoryRepo(driver)
-    repo.removeEntry(slug).then(() => {
-      setItems((prev) => prev.filter((e) => e.slug !== slug))
-    }).catch(() => {})
+    setItems((prev) => {
+      const next = prev.filter((e) => e.slug !== slug)
+      saveAll(next)
+      return next
+    })
   }, [])
 
   const clearAll = useCallback(() => {
-    const driver = getDriver()
-    if (!driver) return
-    const repo = new ReadingHistoryRepo(driver)
-    repo.clear().then(() => setItems([])).catch(() => {})
+    setItems([])
+    saveAll([])
   }, [])
 
   return { items, addEntry, removeEntry, clearAll }

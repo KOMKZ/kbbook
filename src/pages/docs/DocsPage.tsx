@@ -28,6 +28,10 @@ import StopIcon from '@mui/icons-material/Stop'
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import { usePersistentState } from '../../utils/usePersistentState'
+import HighlightToolbar from '../../components/docs/HighlightToolbar'
+import HighlightPanel from '../../components/docs/HighlightPanel'
+import { useHighlight } from '../../components/docs/useHighlight'
+import { localStorageHighlightApi } from '../../data/highlight/localStorage'
 import {
   loadVersions,
   loadDocsMeta,
@@ -139,6 +143,12 @@ const DocsPage = () => {
   const [fontScaleFull, setFontScaleFull] = usePersistentState<number>('fontScale.fullscreen', 1, inRange)
   const [stickyTitleHidden, setStickyTitleHidden] = usePersistentState<boolean>('stickyTitle.hidden', false)
   const [fullscreen, setFullscreen] = useState(false)
+
+  // Highlight / Notes
+  const highlightSourceType = 'doc'
+  const highlightSourceKey = `${seriesId || 'unknown'}/${slug || 'unknown'}`
+  const hl = useHighlight({ api: localStorageHighlightApi, sourceType: highlightSourceType, sourceKey: highlightSourceKey })
+  useEffect(() => { if (slug) hl.load() }, [slug])
 
   // 系列短标题(用于复制路径)
   const [seriesShortTitle, setSeriesShortTitle] = useState('')
@@ -370,6 +380,15 @@ const DocsPage = () => {
         seriesId={seriesId}
         extraButtons={
           <>
+            {/* Highlight / Notes */}
+            <HighlightToolbar
+              brushMode={hl.brushMode} activeColor={hl.activeColor} panelOpen={hl.panelOpen}
+              highlightCount={hl.highlights.length}
+              onToggleBrush={() => hl.setBrushMode(!hl.brushMode)}
+              onSelectColor={hl.setActiveColor}
+              onTogglePanel={() => hl.setPanelOpen(!hl.panelOpen)}
+            />
+
             {/* Reading progress — DOM-updated for zero React re-render on scroll */}
             <Tooltip title={`阅读进度 ${readProgress}%`} placement="left">
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 0.25, position: 'relative' }}>
@@ -622,6 +641,17 @@ const DocsPage = () => {
               py: 5,
               px: { xs: 3, sm: 4, md: 6 },
             }}
+            onMouseUp={() => {
+              if (!hl.brushMode) return
+              const sel = window.getSelection()
+              if (!sel || sel.isCollapsed || !sel.rangeCount) return
+              const text = sel.toString().trim()
+              if (!text) return
+              const range = sel.getRangeAt(0)
+              const rangeJson = hl.serializeRange(range)
+              hl.create(text, rangeJson)
+              sel.removeAllRanges()
+            }}
           >
             {loading ? (
               <LoadingSkeleton />
@@ -699,6 +729,23 @@ const DocsPage = () => {
             fontSize: '0.82rem',
           },
         }}
+      />
+
+      {/* Highlight / Notes Panel */}
+      <HighlightPanel
+        open={hl.panelOpen}
+        highlights={hl.highlights}
+        loading={hl.loading}
+        editingId={hl.editingId}
+        editingText={hl.editingText}
+        onClose={() => hl.setPanelOpen(false)}
+        onDelete={hl.remove}
+        onStartEdit={hl.startEdit}
+        onSaveNote={hl.saveNote}
+        onCancelNote={hl.cancelNote}
+        onEditingTextChange={hl.setEditingText}
+        onCopyAll={async () => { const t = await hl.copyAll(); if (t) navigator.clipboard.writeText(t) }}
+        onClearAll={hl.clearAll}
       />
     </Box>
   )

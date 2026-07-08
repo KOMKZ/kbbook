@@ -51,3 +51,5 @@ export { BackupManager } from './backup/manager.js'
 export { WebBackupStorage } from './backup/storage.js'
 export { sha256, verifyChecksum } from './backup/checksum.js'
 export type { BackupMeta, BackupIndex, RestoreReport, VerifyResult } from './backup/types.js'
+
+export { setDebugFileWriter } from './debug.js'

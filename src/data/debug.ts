@@ -45,15 +45,19 @@ function loadFromStorage(): LogEntry[] {
 }
 entries = loadFromStorage()
 
+// File writer callback — set by StorageContext init to write to app files dir
+let _fileWrite: ((json: string) => void) | null = null
+
+export function setDebugFileWriter(fn: ((json: string) => void) | null) {
+  _fileWrite = fn
+}
+
 function persist() {
   try {
     const last = entries.slice(-MAX_ENTRIES)
     const json = JSON.stringify(last)
     localStorage.setItem(STORAGE_KEY, json)
-    // In Capacitor app mode, also write to files/debug-log.json (adb accessible)
-    if (typeof window !== 'undefined' && (window as any).Capacitor) {
-      import('@/plugins/lz-portal-sync/index.js').then(m => m.writeDebugLog(json)).catch(() => {})
-    }
+    if (_fileWrite) _fileWrite(json)
   } catch {}
 }
 

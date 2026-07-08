@@ -28,7 +28,7 @@ import {
   AuditLogRepo, PreferencesRepo,
 } from '@/data/index.js'
 import type { IStorageDriver } from '@/data/driver/types.js'
-import { debugLog } from '@/data/debug.js'
+import { debugLog, setDebugFileWriter } from '@/data/debug.js'
 
 interface StorageState {
   driver: IStorageDriver | null
@@ -149,6 +149,12 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         const prevVersion = await runner.currentVersion()
         const newVersion = await runner.run()
         debugLog.info('migration', `schema ${prevVersion} → ${newVersion}`)
+
+        // Set up debug log file writer for adb access
+        try {
+          const { writeDebugLog } = await import('@/plugins/lz-portal-sync/index.js')
+          if (writeDebugLog) setDebugFileWriter((json: string) => { writeDebugLog(json).catch(() => {}) })
+        } catch { /* non-critical */ }
 
         await loadInitialData(d)
 

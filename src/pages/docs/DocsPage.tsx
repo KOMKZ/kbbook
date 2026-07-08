@@ -156,7 +156,7 @@ const DocsPage = () => {
     if (!content || hl.highlights.length === 0) return
     const timer = setTimeout(() => {
       const bgColors: Record<string, string> = { yellow:'rgba(250,204,21,0.4)', green:'rgba(74,222,128,0.4)', blue:'rgba(96,165,250,0.4)', pink:'rgba(244,114,182,0.4)', orange:'rgba(251,146,60,0.4)' }
-      const container = document.querySelector('[data-testid="article-content"]') || document.getElementById('content')
+      const container = document.getElementById('article-content')
       if (!container) return
       // Walk text nodes and wrap matching highlight text
       hl.highlights.forEach(h => {
@@ -193,7 +193,7 @@ const DocsPage = () => {
       })
     }, 300)
     return () => clearTimeout(timer)
-  }, [content, hl.highlights.length])
+  }, [content, hl.highlights])
 
   // 系列短标题(用于复制路径)
   const [seriesShortTitle, setSeriesShortTitle] = useState('')
@@ -681,6 +681,7 @@ const DocsPage = () => {
         >
           {/* 文档内容 */}
           <Box
+            id="article-content"
             sx={{
               flex: 1,
               minWidth: 0,

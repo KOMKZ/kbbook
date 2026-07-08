@@ -58,3 +58,4 @@ android/app/*.iml
 release/
 
 .env
+*.kbdata

@@ -197,7 +197,6 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
     canvasRef,
     contentRef,
     openFullscreen,
-    openFullscreenPng,
     closeFullscreen,
     zoomIn,
     zoomOut,

@@ -39,7 +39,7 @@ function save() {
 function add(level: LogEntry['level'], mod: string, msg: string, detail?: unknown) {
   init()
   entries.push({ id: nextId++, timestamp: Date.now(), level, module: mod, message: msg, detail: detail !== undefined ? (typeof detail === 'string' ? detail : JSON.stringify(detail)) : undefined })
-  if (entries.length % 5 === 0) save()
+  save() // always persist
 }
 
 export const debugLog = {

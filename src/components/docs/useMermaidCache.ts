@@ -69,7 +69,7 @@ async function cacheGet(key: string): Promise<Blob | null> {
 }
 
 /** Convert SVG text to PNG Blob via canvas. */
-function svgToPngBlob(svgText: string): Promise<Blob> {
+function svgToPngBlob(svgText: string, isDark: boolean): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const scale = Math.max(3, (window.devicePixelRatio || 2) * 3) // 3x minimum, 6x on 2x screens
     const img = new Image()
@@ -84,6 +84,9 @@ function svgToPngBlob(svgText: string): Promise<Blob> {
       if (!ctx) { URL.revokeObjectURL(url); reject(new Error('no 2d context')); return }
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = 'high'
+      // Fill background matching current theme so PNG isn't transparent/white
+      ctx.fillStyle = isDark ? '#0b0815' : '#ffffff'
+      ctx.fillRect(0, 0, w, h)
       ctx.drawImage(img, 0, 0, w, h)
       canvas.toBlob(blob => {
         URL.revokeObjectURL(url)
@@ -172,7 +175,7 @@ export function useMermaidCache() {
     converting.current.add(hash)
     addDebug('mermaid-cache', `converting SVG→PNG: ${hash} (${svgText.length} chars)`)
     try {
-      const blob = await svgToPngBlob(svgText)
+      const blob = await svgToPngBlob(svgText, isDark)
       addDebug('mermaid-cache', `PNG ready: ${hash} → ${blob.size} bytes`)
       await cachePut(hash, blob)
       addDebug('mermaid-cache', `IDB saved: ${hash}`)

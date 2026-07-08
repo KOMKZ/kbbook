@@ -246,11 +246,11 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
   }, [])
 
   // Clear mermaid cache when theme changes → re-render with correct colors
-  useEffect(() => { setMermaidSvgs({}) }, [isDark])
+  useEffect(() => { setMermaidSvgs({}); setRenderKey(k => k + 1) }, [isDark])
 
   useEffect(() => {
     Prism.highlightAll()
-    const timer = setTimeout(renderMermaidDiagrams, 100)
+    const timer = setTimeout(renderMermaidDiagrams, 150) // slight delay for mermaid.initialize
     return () => clearTimeout(timer)
   }, [content, renderKey, renderMermaidDiagrams])
 

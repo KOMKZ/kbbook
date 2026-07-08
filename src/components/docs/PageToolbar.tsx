@@ -29,13 +29,15 @@ function saveY(y: number) { try { localStorage.setItem("kbbook-toolbar-y", Strin
 interface Props {
   extraButtons?: React.ReactNode
   seriesId?: string
+  columns?: number  // 1-4, default 1 (vertical), >1 uses flexWrap
 }
 
-const PageToolbar = ({ extraButtons, seriesId }: Props) => {
+const PageToolbar = ({ extraButtons, seriesId, columns = 1 }: Props) => {
   const navigate = useNavigate()
   const [historyOpen, setHistoryOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const { items, removeEntry, clearAll } = useReadingHistory()
+  const cols = Math.max(1, Math.min(4, columns))
   const { toolbarSize: s } = useToolbarSizeCtx()
 
   // Auto-collapse after inactivity (default 10s, configurable in Settings)
@@ -119,7 +121,14 @@ const PageToolbar = ({ extraButtons, seriesId }: Props) => {
       <Fade in={!collapsed}>
         <Box sx={{ position: 'fixed', right: { xs: 8, sm: 16 }, top, bottom, zIndex: 1250, transform: `scale(${s})`, transformOrigin: 'right bottom' }}>
           <Paper elevation={3}
-            sx={{ display: 'flex', flexDirection: 'column', borderRadius: 3, p: 0.5, gap: 0.25 }}
+            sx={{
+              display: 'flex', flexDirection: cols > 1 ? 'row' : 'column',
+              flexWrap: cols > 1 ? 'wrap' : 'nowrap',
+              maxWidth: cols > 1 ? cols * 56 + (cols - 1) * 4 : undefined,
+              borderRadius: 3, p: 0.5, gap: 0.25,
+            }}
+            onMouseEnter={() => { if (autoHideRef.current) clearTimeout(autoHideRef.current) }}
+            onMouseLeave={resetAutoHide}
           >
             {/* Drag handle */}
             <Paper elevation={0}

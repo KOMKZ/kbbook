@@ -12,7 +12,7 @@ import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
 import CloseIcon from '@mui/icons-material/Close'
 import EditIcon from '@mui/icons-material/Edit'
 import CircularProgress from '@mui/material/CircularProgress'
-import Drawer from '@mui/material/Drawer'
+import Dialog from '@mui/material/Dialog'
 import type { HighlightItem, HighlightColor } from '../../data/highlight/types'
 import { COLOR_BG } from './useHighlight'
 
@@ -32,16 +32,14 @@ interface Props {
   onClearAll: () => void
 }
 
-const DRAWER_WIDTH = 340
-
 const HighlightPanel = ({
   open, highlights, loading, editingId, editingText,
   onClose, onDelete, onStartEdit, onSaveNote, onCancelNote, onEditingTextChange,
   onCopyAll, onClearAll,
 }: Props) => {
   return (
-    <Drawer anchor="right" open={open} onClose={onClose}
-      sx={{ '& .MuiDrawer-paper': { width: DRAWER_WIDTH, p: 0 } }}
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth
+      PaperProps={{ sx: { height: '70vh', maxHeight: 600 } }}
     >
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
@@ -122,7 +120,7 @@ const HighlightPanel = ({
           </Box>
         ))}
       </Box>
-    </Drawer>
+    </Dialog>
   )
 }
 

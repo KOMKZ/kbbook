@@ -100,6 +100,28 @@ function ToolbarSizeSection() {
   )
 }
 
+function ToolbarColumnSection() {
+  const [cols, setCols] = useState(() => {
+    const v = parseInt(localStorage.getItem('kbbook-toolbar-columns') || '1')
+    return Math.max(1, Math.min(4, v || 1))
+  })
+  const set = (n: number) => {
+    const v = Math.max(1, Math.min(4, n))
+    setCols(v)
+    localStorage.setItem('kbbook-toolbar-columns', String(v))
+  }
+  return (
+    <Section title="工具栏列数" subtitle="浮动按钮排列列数（1=竖排 4=横排）">
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Tooltip title="减少"><span><IconButton size="small" onClick={() => set(cols - 1)} disabled={cols <= 1}><RemoveIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Typography variant="body2" sx={{ minWidth: 48, textAlign: 'center', fontWeight: 600 }}>{cols} 列</Typography>
+        <Tooltip title="增加"><span><IconButton size="small" onClick={() => set(cols + 1)} disabled={cols >= 4}><AddIcon fontSize="small" /></IconButton></span></Tooltip>
+        <Button size="small" onClick={() => set(1)} disabled={cols === 1} sx={{ ml: 1 }}>重置</Button>
+      </Box>
+    </Section>
+  )
+}
+
 // ============================================================
 // Nav
 // ============================================================
@@ -307,6 +329,7 @@ const SettingsPanel = () => {
               </Box>
             </Section>
             <ToolbarSizeSection />
+            <ToolbarColumnSection />
             <Section title="外观" subtitle="主题、工具栏自动隐藏">
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="body2" color="text.secondary">工具栏无操作后自动隐藏（秒，0=不隐藏）：</Typography>

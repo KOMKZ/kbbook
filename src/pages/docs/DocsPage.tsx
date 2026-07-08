@@ -378,6 +378,7 @@ const DocsPage = () => {
       {/* 统一工具栏 */}
       <PageToolbar
         seriesId={seriesId}
+        columns={parseInt(localStorage.getItem('kbbook-toolbar-columns') || '1')}
         extraButtons={
           <>
             {/* Highlight / Notes */}
@@ -648,9 +649,15 @@ const DocsPage = () => {
               const text = sel.toString().trim()
               if (!text) return
               const range = sel.getRangeAt(0)
+              // Wrap selected text in <mark> for immediate visual feedback
+              try {
+                const mark = document.createElement('mark')
+                mark.className = `hl-${hl.activeColor[0]}`
+                mark.style.cssText = `background:${hl.activeColor === 'yellow' ? 'rgba(250,204,21,0.4)' : hl.activeColor === 'green' ? 'rgba(74,222,128,0.4)' : hl.activeColor === 'blue' ? 'rgba(96,165,250,0.4)' : hl.activeColor === 'pink' ? 'rgba(244,114,182,0.4)' : 'rgba(251,146,60,0.4)'};border-radius:2px;padding:0 1px`
+                range.surroundContents(mark)
+              } catch { /* cross-node selection, skip visual */ }
               const rangeJson = hl.serializeRange(range)
               hl.create(text, rangeJson)
-              sel.removeAllRanges()
             }}
           >
             {loading ? (

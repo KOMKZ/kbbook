@@ -5,6 +5,13 @@
  * and loads initial data from bundled .kbdata file if DB is empty.
  */
 
+// OSS credentials injected at build time via Vite define (replaced at compile time)
+declare const __OSS_ENDPOINT__: string
+declare const __OSS_BUCKET__: string
+declare const __OSS_PATH__: string
+declare const __OSS_ACCESS_KEY_ID__: string
+declare const __OSS_ACCESS_KEY_SECRET__: string
+
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -99,6 +106,28 @@ async function loadInitialData(d: IStorageDriver) {
   debugLog.info('storage', `初始数据加载完成: ${total} rows`)
 }
 
+/** Seed baked-in OSS credentials into preferences, filling empty values. */
+async function seedOssCredentials(d: IStorageDriver) {
+  try {
+    const rows = await d.query<{key:string, value:string}>("SELECT key, value FROM preferences WHERE key = 'kbbook-oss-config'")
+    if (!rows.length) return
+    let cfg: Record<string, string>
+    try { cfg = JSON.parse(rows[0].value) } catch { return }
+    let changed = false
+    const bk = (k: string, v: string) => { if (!cfg[k]) { cfg[k] = v; changed = true } }
+    // Fill empty fields from Vite-injected globals (replaced at build time via define)
+    bk('endpoint', (typeof __OSS_ENDPOINT__ !== 'undefined' && __OSS_ENDPOINT__) || 'https://oss-cn-shenzhen.aliyuncs.com')
+    bk('bucket', (typeof __OSS_BUCKET__ !== 'undefined' && __OSS_BUCKET__) || 'yogan-static')
+    bk('path', (typeof __OSS_PATH__ !== 'undefined' && __OSS_PATH__) || 'lz-learn-portal-sqllite-data')
+    bk('accessKeyId', (typeof __OSS_ACCESS_KEY_ID__ !== 'undefined' && __OSS_ACCESS_KEY_ID__) || '')
+    bk('accessKeySecret', (typeof __OSS_ACCESS_KEY_SECRET__ !== 'undefined' && __OSS_ACCESS_KEY_SECRET__) || '')
+    if (changed) {
+      await d.exec("UPDATE preferences SET value = ? WHERE key = 'kbbook-oss-config'", [JSON.stringify(cfg)])
+      console.log('[StorageProvider] OSS credentials seeded')
+    }
+  } catch (e) { /* non-critical: user can enter manually */ }
+}
+
 export function StorageProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<StorageState>({ driver: null, ready: false, error: null })
 
@@ -116,6 +145,9 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         debugLog.info('migration', `schema ${prevVersion} → ${newVersion}`)
 
         await loadInitialData(d)
+
+        // Seed baked-in OSS credentials into preferences (ensure never empty)
+        await seedOssCredentials(d)
 
         if (cancelled) { await d.close(); return }
         debugLog.info('storage', '初始化完成')

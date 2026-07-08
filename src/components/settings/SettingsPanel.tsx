@@ -123,12 +123,27 @@ const OSS_DEFAULTS = {
   accessKeySecret: (typeof __OSS_ACCESS_KEY_SECRET__ !== 'undefined' && __OSS_ACCESS_KEY_SECRET__) || '',
 }
 
+function regionFromEndpoint(ep: string): string {
+  const m = ep.match(/\/\/(oss-[^.]+)\./)
+  return m ? m[1] : 'oss-cn-shenzhen'
+}
+
 function loadOssConfig(): typeof OSS_DEFAULTS {
-  return { ...OSS_DEFAULTS }
+  const baked = { ...OSS_DEFAULTS }
+  // Merge persisted config (user overrides baked-in build defaults)
+  try {
+    const stored = localStorage.getItem('lz-oss-config')
+    if (stored) Object.assign(baked, JSON.parse(stored))
+  } catch {}
+  return baked
 }
 
 function saveOssConfig(cfg: typeof OSS_DEFAULTS) {
-  try { getPreferencesRepo()?.set('kbbook-oss-config', cfg) } catch {}
+  try {
+    localStorage.setItem('lz-oss-config', JSON.stringify(cfg))
+    // Also write to SQLite prefs so pullLatest can read it
+    getPreferencesRepo()?.set('kbbook-oss-config', cfg)
+  } catch {}
 }
 
 // ============================================================
@@ -296,7 +311,9 @@ const SettingsPanel = () => {
                     const { pullLatest, mergeFromOss } = await import('@/data/sync/oss.js')
                     const { exportDatabase, importDatabase } = await import('@/data/migration/exporter.js')
                     const result = await pullLatest({
-                      bucket: cfg.bucket, region: cfg.region || 'oss-cn-hangzhou',
+                      bucket: cfg.bucket,
+                      region: regionFromEndpoint(cfg.endpoint || 'https://oss-cn-shenzhen.aliyuncs.com'),
+                      endpoint: cfg.endpoint,
                       accessKeyId: cfg.accessKeyId, accessKeySecret: cfg.accessKeySecret,
                       path: cfg.path,
                     })

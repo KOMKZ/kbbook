@@ -299,7 +299,12 @@ export async function loadDocContent(version: string, slug: string, lang?: Langu
     const contentType = response.headers.get('content-type') || ''
     const content = await response.text()
     const looksLikeHtmlFallback =
-      contentType.includes('text/html') || content.trimStart().startsWith('<!doctype') || content.trimStart().startsWith('<!DOCTYPE')
+      contentType.includes('text/html') ||
+      content.trimStart().startsWith('<!doctype') ||
+      content.trimStart().startsWith('<!DOCTYPE') ||
+      content.includes('@vite/client') ||
+      content.trimStart().startsWith('<script') ||
+      content.trimStart().startsWith('<html')
     if (looksLikeHtmlFallback) {
       throw new Error(`Doc not found (got SPA fallback): ${slug}.md`)
     }

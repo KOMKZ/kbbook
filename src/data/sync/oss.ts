@@ -48,6 +48,7 @@ export function filterStructural(dump: DatabaseDump): DatabaseDump {
 export interface OssConfig {
   bucket: string
   region: string
+  endpoint?: string       // e.g. https://oss-cn-shenzhen.aliyuncs.com (takes precedence over bucket+region for URL)
   accessKeyId: string
   accessKeySecret: string
   path?: string
@@ -78,7 +79,8 @@ async function ossSign(method: string, objectKey: string, bucket: string, akId: 
   return `OSS ${akId}:${signature}`
 }
 
-function ossUrl(bucket: string, region: string, objectKey: string): string {
+function ossUrl(bucket: string, region: string, objectKey: string, endpoint?: string): string {
+  if (endpoint) return `${endpoint}/${objectKey}`
   return `https://${bucket}.${region}.aliyuncs.com/${objectKey}`
 }
 
@@ -88,7 +90,7 @@ function ossUrl(bucket: string, region: string, objectKey: string): string {
 export async function pullLatest(config: OssConfig): Promise<OssResult & { dump?: DatabaseDump }> {
   const base = config.path || 'lz-learn-portal-sqllite-data'
   const key = `${base}/kbdata/latest.json`
-  const url = ossUrl(config.bucket, config.region, key)
+  const url = ossUrl(config.bucket, config.region, key, config.endpoint)
   try {
     const auth = await ossSign('GET', key, config.bucket, config.accessKeyId, config.accessKeySecret)
     const resp = await fetch(url, { headers: { 'Date': new Date().toUTCString(), 'Authorization': auth } })
@@ -137,7 +139,7 @@ export async function uploadSnapshot(dump: DatabaseDump, config: OssConfig): Pro
   const base = config.path || 'lz-learn-portal-sqllite-data'
   const ts = new Date().toISOString().replace(/[:.]/g, '-')
   const key = `${base}/kbdata/${ts}.json`
-  const url = ossUrl(config.bucket, config.region, key)
+  const url = ossUrl(config.bucket, config.region, key, config.endpoint)
   const body = JSON.stringify(filtered)
   try {
     const auth = await ossSign('PUT', key, config.bucket, config.accessKeyId, config.accessKeySecret)
@@ -148,7 +150,7 @@ export async function uploadSnapshot(dump: DatabaseDump, config: OssConfig): Pro
     // Also update latest.json
     const lk = `${base}/kbdata/latest.json`
     const la = await ossSign('PUT', lk, config.bucket, config.accessKeyId, config.accessKeySecret)
-    await fetch(ossUrl(config.bucket, config.region, lk), {
+    await fetch(ossUrl(config.bucket, config.region, lk, config.endpoint), {
       method: 'PUT', headers: { 'Content-Type': 'application/json', 'Date': new Date().toUTCString(), 'Authorization': la }, body,
     })
     return { success: true, key, sizeBytes: body.length }

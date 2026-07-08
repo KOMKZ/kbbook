@@ -122,15 +122,13 @@ export class SqlJsDriver implements IStorageDriver {
     this.ensureOpen()
     for (const [tname, rows] of Object.entries(dump.tables)) {
       if (!rows.length) continue
-      // Clear existing rows so REPLACE works (tables created by migration have PKs)
-      this._db!.run(`DELETE FROM "${tname}"`)
       const cols = Object.keys(rows[0])
       const colDefs = cols.map(c => `"${c}" ${typeof rows[0][c] === 'number' ? 'REAL' : 'TEXT'}`).join(',')
       this._db!.run(`CREATE TABLE IF NOT EXISTS "${tname}" (${colDefs})`)
       for (const row of rows) {
         const vals = cols.map(c => row[c])
         const ph = vals.map(() => '?').join(',')
-        this._db!.run(`INSERT INTO "${tname}" (${cols.map(c => `"${c}"`).join(',')}) VALUES (${ph})`, vals as BindValue[])
+        this._db!.run(`INSERT OR REPLACE INTO "${tname}" (${cols.map(c => `"${c}"`).join(',')}) VALUES (${ph})`, vals as BindValue[])
       }
     }
     await this.persistToOPFS()

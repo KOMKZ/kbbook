@@ -12,6 +12,7 @@ interface MermaidFullscreenProps {
   svgHtml: string
   zoomPercent: number
   isDragging: boolean
+  isPng?: boolean
   canvasRef: React.RefObject<HTMLDivElement | null>
   contentRef: React.RefObject<HTMLDivElement | null>
   onClose: () => void
@@ -59,7 +60,7 @@ const MermaidFullscreen = ({
             variant="body2"
             sx={{ color: 'rgba(255, 255, 255, 0.7)', fontWeight: 500 }}
           >
-            Mermaid Diagram
+            Mermaid Diagram {isPng ? '(PNG)' : '(SVG)'}
           </Typography>
 
           {/* 缩放控制 */}

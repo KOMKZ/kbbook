@@ -8,6 +8,7 @@ export function useMermaidZoom() {
   const [fullscreenSvg, setFullscreenSvg] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [zoomPercent, setZoomPercent] = useState(100)
+  const isPngRef = useRef(false)
 
   // Direct DOM refs — bypass React for transform updates (avoids per-frame reconciliation)
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -38,7 +39,8 @@ export function useMermaidZoom() {
     applyTransform()
   }, [applyTransform])
 
-  const openFullscreen = useCallback((el: SVGElement) => {
+  const openFullscreen = useCallback((el: SVGElement, isPng?: boolean) => {
+    isPngRef.current = !!isPng
     const clone = el.cloneNode(true) as SVGElement
     let s = clone.getAttribute('style') || ''
     s = s.replace(/position\s*:\s*[^;]+;?/gi, '').replace(/max-width\s*:\s*[^;]+;?/gi, '')
@@ -150,7 +152,7 @@ export function useMermaidZoom() {
   }, [fullscreenSvg, closeFullscreen, zoomIn, zoomOut, resetView])
 
   return {
-    fullscreenSvg, zoomPercent, isDragging,
+    fullscreenSvg, isPng: isPngRef.current, zoomPercent, isDragging,
     canvasRef, contentRef,
     openFullscreen, closeFullscreen,
     zoomIn, zoomOut, resetView,

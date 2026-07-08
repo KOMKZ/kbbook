@@ -11,6 +11,17 @@
 
 import { useRef, useCallback } from 'react'
 
+let _addDebug: ((mod: string, msg: string) => void) | null = null
+async function addDebug(mod: string, msg: string) {
+  if (!_addDebug) {
+    try {
+      const m = await import('../../utils/debug.js')
+      _addDebug = m.debugLog.info.bind(m.debugLog)
+    } catch { _addDebug = () => {} }
+  }
+  _addDebug(mod, msg)
+}
+
 const DB_NAME = 'kbbook-mermaid-cache'
 const DB_VERSION = 1
 const STORE = 'pngs'
@@ -118,21 +129,27 @@ export function useMermaidCache() {
    */
   const getMermaidPng = useCallback(async (src: string): Promise<string | null> => {
     // PC mode: never use cache — always render SVG
-    if (!isNative()) {
-      console.log('[MermaidCache] PC mode — skipping cache, platform:', getPlatformLabel())
-      return null
-    }
+    if (!isNative()) return null
 
     const hash = await hashString(src)
     // Check in-memory cache first
-    if (cache.current.has(hash)) return cache.current.get(hash)!
+    if (cache.current.has(hash)) {
+      addDebug('mermaid-cache', `in-memory hit: ${hash}`)
+      return cache.current.get(hash)!
+    }
 
     // Check IndexedDB
-    const blob = await cacheGet(hash)
-    if (blob) {
-      const url = URL.createObjectURL(blob)
-      cache.current.set(hash, url)
-      return url
+    try {
+      const blob = await cacheGet(hash)
+      if (blob) {
+        const url = URL.createObjectURL(blob)
+        cache.current.set(hash, url)
+        addDebug('mermaid-cache', `IDB hit: ${hash} (${blob.size} bytes)`)
+        return url
+      }
+      addDebug('mermaid-cache', `IDB miss: ${hash}`)
+    } catch (e: any) {
+      addDebug('mermaid-cache', `IDB error: ${e.message}`)
     }
     return null
   }, [])
@@ -146,14 +163,16 @@ export function useMermaidCache() {
     const hash = await hashString(src)
     if (cache.current.has(hash) || converting.current.has(hash)) return
     converting.current.add(hash)
+    addDebug('mermaid-cache', `converting SVG→PNG: ${hash} (${svgText.length} chars)`)
     try {
       const blob = await svgToPngBlob(svgText)
+      addDebug('mermaid-cache', `PNG ready: ${hash} → ${blob.size} bytes`)
       await cachePut(hash, blob)
+      addDebug('mermaid-cache', `IDB saved: ${hash}`)
       const url = URL.createObjectURL(blob)
-      // Don't replace existing DOM — next page load will use cache
       cache.current.set(hash, url)
-    } catch (e) {
-      console.warn('[MermaidCache] conversion failed', e)
+    } catch (e: any) {
+      addDebug('mermaid-cache', `conversion failed: ${e.message}`)
     } finally {
       converting.current.delete(hash)
     }

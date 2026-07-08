@@ -316,8 +316,20 @@ const SettingsPanel = () => {
     setProgress(null)
     setDocResult(null)
     try {
-      await triggerSync(ossCfg)
-      setToast({ message: '文档同步完成', severity: 'success' })
+      const { syncFromOSS } = await import('@/plugins/lz-portal-sync/index.js')
+      const result = await syncFromOSS(ossCfg)
+      // Also update DocModeContext state
+      triggerSync(ossCfg).catch(() => {})
+      setDocResult({
+        added: result.added, updated: result.updated, deleted: result.deleted,
+        fileCount: result.fileCount,
+        time: new Date().toLocaleTimeString(),
+      })
+      if (result.skipped) {
+        setToast({ message: '已是最新版本', severity: 'success' })
+      } else {
+        setToast({ message: `同步完成: +${result.added} ~${result.updated} -${result.deleted}`, severity: 'success' })
+      }
     } catch (e: any) {
       setProgress(null)
       setDocResult({ added: 0, updated: 0, deleted: 0, fileCount: 0, time: new Date().toLocaleTimeString(), error: e?.message || '同步失败' })

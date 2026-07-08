@@ -20,7 +20,6 @@ import { useReadingHistory } from '../../hooks/useReadingHistory'
 import { useToolbarSizeCtx } from '../../contexts/ToolbarSizeContext'
 // preferences via localStorage
 
-const KEY_Y = 'lz-pagetoolbar-y'
 
 function loadY(): number | null {
   return null

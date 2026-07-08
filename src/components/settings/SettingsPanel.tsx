@@ -249,6 +249,7 @@ const SettingsPanel = () => {
   const { networkUrl, syncStatus, syncing, triggerSync, syncResult } = useDocMode()
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
+  const [sqliteResult, setSqliteResult] = useState<{ tables: number; rows: number; sizeKB: string; time: string } | null>(null)
   const [webVersion, setWebVersion] = useState<string>('...')
   const [appVersion, setAppVersion] = useState<string>('...')
 
@@ -421,12 +422,17 @@ const SettingsPanel = () => {
                     }
                     debugLog.info('sync', `pullLatest OK: ${result.sizeBytes} bytes, merging...`)
                     const localDump = await exportDatabase(driver)
-                    debugLog.info('sync', `local dump: ${Object.keys(localDump.tables).length} tables, ${Object.values(localDump.tables).reduce((s,r)=>s+r.length,0)} rows`)
+                    const localRows = Object.values(localDump.tables).reduce((s,r)=>s+r.length,0)
+                    debugLog.info('sync', `local dump: ${Object.keys(localDump.tables).length} tables, ${localRows} rows`)
                     const merged = mergeFromOss(localDump, result.dump)
                     await importDatabase(driver, merged)
-                    const msg = `数据同步完成 (${((result.sizeBytes || 0) / 1024).toFixed(1)} KB)`
-                    setToast({ message: msg, severity: 'success' })
-                    debugLog.info('sync', msg)
+                    const remoteTables = Object.keys(result.dump!.tables).length
+                    const remoteRows = Object.values(result.dump!.tables).reduce((s,r)=>s+r.length,0)
+                    const sizeKB = ((result.sizeBytes || 0) / 1024).toFixed(1)
+                    const now = new Date().toLocaleTimeString()
+                    setSqliteResult({ tables: remoteTables, rows: remoteRows, sizeKB, time: now })
+                    setToast({ message: `同步完成: ${remoteTables} 表 ${remoteRows} 行 (${sizeKB} KB)`, severity: 'success' })
+                    debugLog.info('sync', `SQLite sync done: ${remoteTables}t/${remoteRows}r, local was ${localRows}r`)
                     debugLog.flush()
                   } catch (e) {
                     const msg = '数据同步异常: ' + (e as Error).message
@@ -436,6 +442,16 @@ const SettingsPanel = () => {
                   }
                 }}
               >同步 SQLite 数据</Button>
+              {sqliteResult && (
+                <Box sx={{ mt: 1, p: 1.5, bgcolor: 'success.light', borderRadius: 1, color: 'success.contrastText' }}>
+                  <Typography variant="body2" fontWeight="bold">
+                    上次同步: {sqliteResult.time} — {sqliteResult.tables} 表, {sqliteResult.rows} 行 ({sqliteResult.sizeKB} KB)
+                  </Typography>
+                  <Typography variant="caption" sx={{ mt: 0.5, display: 'block' }}>
+                    提示: 结构数据已更新。切换页面或下拉刷新查看最新内容。
+                  </Typography>
+                </Box>
+              )}
             </Section>
 
             {/* OSS 配置 */}

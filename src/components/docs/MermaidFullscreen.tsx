@@ -25,7 +25,7 @@ interface MermaidFullscreenProps {
 }
 
 const MermaidFullscreen = ({
-  svgHtml, zoomPercent, isDragging,
+  svgHtml, zoomPercent, isDragging, isPng,
   canvasRef, contentRef,
   onClose, onZoomIn, onZoomOut, onResetView,
   onWheel, onDragStart, onTouchStart,

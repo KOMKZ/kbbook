@@ -91,8 +91,29 @@ function ossUrl(bucket: string, region: string, objectKey: string): string {
 export async function pullLatest(config: OssConfig): Promise<OssResult & { dump?: DatabaseDump }> {
   const base = config.path || 'lz-learn-portal-sqllite-data'
   const key = `${base}/kbdata/latest.json`
+
+  // In Capacitor app mode, use native OSS SDK to bypass WebView CORS
+  try {
+    const w = typeof window !== 'undefined' ? (window as any) : null
+    if (w?.Capacitor?.isNativePlatform?.()) {
+      const { pullKbdata } = await import('@/plugins/lz-portal-sync/index.js')
+      debugLog.info('oss', 'pullLatest via native plugin')
+      const native = await pullKbdata()
+      if (native.success && native.json) {
+        const dump: DatabaseDump = JSON.parse(native.json)
+        const rows = Object.values(dump.tables).reduce((s, r) => s + r.length, 0)
+        debugLog.info('oss', `pullLatest OK (native): ${Object.keys(dump.tables).length} tables, ${rows} rows, ${native.sizeBytes} bytes`)
+        return { success: true, key: native.key, sizeBytes: native.sizeBytes, dump }
+      }
+      debugLog.warn('oss', 'native pullKbdata failed, falling back to fetch')
+    }
+  } catch (e) {
+    debugLog.warn('oss', 'native pullKbdata unavailable, using fetch', e)
+  }
+
+  // Web/fallback: use fetch with HMAC signing
   const url = ossUrl(config.bucket, config.region, key)
-  debugLog.info('oss', `pullLatest: ${url}`)
+  debugLog.info('oss', `pullLatest fetch: ${url}`)
   try {
     const auth = await ossSign('GET', key, config.bucket, config.accessKeyId, config.accessKeySecret)
     const resp = await fetch(url, { headers: { 'Date': new Date().toUTCString(), 'Authorization': auth } })

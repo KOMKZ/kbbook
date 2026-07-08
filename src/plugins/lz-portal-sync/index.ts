@@ -65,6 +65,7 @@ export interface LZPortalSyncPlugin {
   setNetworkUrl(options: { url: string }): Promise<void>
   writeDebugLog(options: { json: string }): Promise<void>
   readDebugLog(): Promise<{ json: string }>
+  pullKbdata(): Promise<{ success: boolean; key?: string; sizeBytes?: number; json?: string }>
   setNetworkUrl(options: { url: string }): Promise<void>
   checkWebUpdate(): Promise<WebUpdateResult>
   getWebVersion(): Promise<WebVersionResult>
@@ -197,6 +198,14 @@ export const getWebVersion = async (): Promise<string> => {
     try { const r = await LZPortalSync.getWebVersion(); return r.version } catch { return '0' }
   }
   return '0'
+}
+
+/** Download kbdata JSON via native OSS SDK (bypasses WebView CORS). */
+export const pullKbdata = async (): Promise<{ success: boolean; key?: string; sizeBytes?: number; json?: string }> => {
+  if (isNative()) {
+    return LZPortalSync.pullKbdata()
+  }
+  return { success: false }
 }
 
 // === Debug log file persistence ===

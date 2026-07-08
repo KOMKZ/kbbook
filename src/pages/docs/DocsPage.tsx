@@ -650,14 +650,34 @@ const DocsPage = () => {
               if (!text) return
               const range = sel.getRangeAt(0)
               // Wrap selected text in <mark> for immediate visual feedback
+              const bgColors: Record<string, string> = { yellow:'rgba(250,204,21,0.4)', green:'rgba(74,222,128,0.4)', blue:'rgba(96,165,250,0.4)', pink:'rgba(244,114,182,0.4)', orange:'rgba(251,146,60,0.4)' }
               try {
                 const mark = document.createElement('mark')
                 mark.className = `hl-${hl.activeColor[0]}`
-                mark.style.cssText = `background:${hl.activeColor === 'yellow' ? 'rgba(250,204,21,0.4)' : hl.activeColor === 'green' ? 'rgba(74,222,128,0.4)' : hl.activeColor === 'blue' ? 'rgba(96,165,250,0.4)' : hl.activeColor === 'pink' ? 'rgba(244,114,182,0.4)' : 'rgba(251,146,60,0.4)'};border-radius:2px;padding:0 1px`
+                mark.style.cssText = `background:${bgColors[hl.activeColor]};border-radius:2px;padding:0 1px;cursor:pointer`
+                mark.setAttribute('data-hl-color', hl.activeColor)
                 range.surroundContents(mark)
               } catch { /* cross-node selection, skip visual */ }
               const rangeJson = hl.serializeRange(range)
               hl.create(text, rangeJson)
+            }}
+            onClick={(e) => {
+              // Click on a <mark> → delete the highlight
+              const target = e.target as HTMLElement
+              if (target.tagName === 'MARK' && target.classList.contains('hl-y') || target.classList.contains('hl-g') || target.classList.contains('hl-b') || target.classList.contains('hl-p') || target.classList.contains('hl-o')) {
+                const text = target.textContent || ''
+                // Find and delete the matching highlight
+                const match = hl.highlights.find(h => h.text === text)
+                if (match) {
+                  hl.remove(match.id)
+                  // Unwrap the mark
+                  const parent = target.parentNode
+                  if (parent) {
+                    while (target.firstChild) parent.insertBefore(target.firstChild, target)
+                    parent.removeChild(target)
+                  }
+                }
+              }
             }}
           >
             {loading ? (

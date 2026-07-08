@@ -7,6 +7,7 @@ import AddIcon from '@mui/icons-material/Add'
 import RemoveIcon from '@mui/icons-material/Remove'
 import FitScreenIcon from '@mui/icons-material/FitScreen'
 import CloseIcon from '@mui/icons-material/Close'
+import { getPlatformLabel } from './useMermaidCache'
 
 interface MermaidFullscreenProps {
   svgHtml: string
@@ -60,7 +61,7 @@ const MermaidFullscreen = ({
             variant="body2"
             sx={{ color: 'rgba(255, 255, 255, 0.7)', fontWeight: 500 }}
           >
-            Mermaid Diagram {isPng ? '(PNG)' : '(SVG)'}
+            Mermaid · {isPng ? 'PNG' : 'SVG'} · {getPlatformLabel()}
           </Typography>
 
           {/* 缩放控制 */}

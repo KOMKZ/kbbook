@@ -85,9 +85,27 @@ function svgToPngBlob(svgText: string, scale = 2): Promise<Blob> {
 /** Check if running on Capacitor tablet/phone. */
 function isNative(): boolean {
   try {
-    const c = (window as any).Capacitor
-    return !!(c && typeof c.isNativePlatform === 'function' && c.isNativePlatform())
+    // Multiple detection methods for robustness
+    const w = window as any
+    // Method 1: Capacitor API
+    if (w.Capacitor && typeof w.Capacitor.isNativePlatform === 'function' && w.Capacitor.isNativePlatform()) return true
+    // Method 2: Capacitor user agent
+    if (w.Capacitor?.getPlatform?.() === 'android' || w.Capacitor?.getPlatform?.() === 'ios') return true
+    // Method 3: Cordova/PhoneGap
+    if (!!w.cordova) return true
+    return false
   } catch { return false }
+}
+
+/** Get platform display string for debugging. */
+export function getPlatformLabel(): string {
+  try {
+    const w = window as any
+    if (w.Capacitor?.getPlatform) return `Capacitor/${w.Capacitor.getPlatform()}`
+    if (w.Capacitor) return 'Capacitor/web'
+    if (w.cordova) return 'Cordova'
+  } catch {}
+  return navigator.userAgent.includes('Android') ? 'Android/WebView' : 'PC/Browser'
 }
 
 export function useMermaidCache() {
@@ -100,7 +118,10 @@ export function useMermaidCache() {
    */
   const getMermaidPng = useCallback(async (src: string): Promise<string | null> => {
     // PC mode: never use cache — always render SVG
-    if (!isNative()) return null
+    if (!isNative()) {
+      console.log('[MermaidCache] PC mode — skipping cache, platform:', getPlatformLabel())
+      return null
+    }
 
     const hash = await hashString(src)
     // Check in-memory cache first

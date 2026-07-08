@@ -119,23 +119,35 @@ const MermaidFullscreen = ({
             userSelect: 'none',
           }}
         >
-          <Box
-            ref={contentRef}
-            dangerouslySetInnerHTML={{ __html: svgHtml }}
-            sx={{
-              position: 'absolute',
-              left: '50%',
-              top: '50%',
-              transformOrigin: '0 0',
-              willChange: 'transform',
-              '& svg': {
-                display: 'block',
-                backgroundColor: '#f8fafc',
-                borderRadius: '8px',
-                boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
-              },
-            }}
-          />
+          {svgHtml.startsWith('blob:') || svgHtml.startsWith('http') ? (
+            <Box
+              ref={contentRef}
+              sx={{
+                position: 'absolute', left: '50%', top: '50%',
+                transformOrigin: '0 0', willChange: 'transform',
+              }}
+            >
+              <img src={svgHtml} alt="mermaid diagram" style={{ maxWidth: '90vw', maxHeight: '80vh', display: 'block', background: '#f8fafc', borderRadius: 8, boxShadow: '0 4px 24px rgba(0,0,0,0.3)' }} />
+            </Box>
+          ) : (
+            <Box
+              ref={contentRef}
+              dangerouslySetInnerHTML={{ __html: svgHtml }}
+              sx={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                transformOrigin: '0 0',
+                willChange: 'transform',
+                '& svg': {
+                  display: 'block',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+                },
+              }}
+            />
+          )}
         </Box>
 
         {/* 底部提示 */}

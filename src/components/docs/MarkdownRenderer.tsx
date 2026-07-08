@@ -195,6 +195,7 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
     canvasRef,
     contentRef,
     openFullscreen,
+    openFullscreenPng,
     closeFullscreen,
     zoomIn,
     zoomOut,
@@ -227,17 +228,10 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
       if (!code || block.querySelector('.mermaid-svg-wrapper svg')) continue
 
       try {
-        // Check PNG cache first (tablet only, PC returns null immediately)
-        const pngUrl = await getMermaidPng(code)
-        if (pngUrl) {
-          // Cache hit — store as special marker
-          newSvgs[code] = `__png__:${pngUrl}`
-          continue
-        }
         const uniqueId = `mermaid-${Date.now()}-${mermaidRenderCount++}`
         const { svg } = await mermaid.render(uniqueId, code)
         newSvgs[code] = svg
-        // Background: convert SVG to PNG and cache for next time (tablet only)
+        // Background: convert SVG to PNG and cache for fullscreen (tablet only)
         cacheSvgLater(code, svg)
       } catch {
         newSvgs[code] = ''
@@ -467,30 +461,11 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
             // Mermaid 图表
             if (language === 'mermaid') {
               const cachedSvg = mermaidSvgs[codeString]
-              const isPng = typeof cachedSvg === 'string' && cachedSvg.startsWith('__png__:')
-              const pngUrl = isPng ? cachedSvg.slice(8) : null
               const isError = cachedSvg === ''
               return (
-                <div className="mermaid-block" data-code={codeString} style={{ position: 'relative' }}>
-                  {/* Mode badge */}
-                  {cachedSvg && !isError && (
-                    <Box sx={{
-                      position: 'absolute', top: 4, right: 4, zIndex: 2,
-                      px: 0.8, py: 0.2, borderRadius: 1,
-                      bgcolor: isPng ? 'rgba(34,197,94,0.15)' : 'rgba(148,163,184,0.15)',
-                      color: isPng ? '#16a34a' : '#64748b',
-                      fontSize: '0.65rem', fontWeight: 700, fontFamily: 'monospace',
-                      border: '1px solid', borderColor: isPng ? 'rgba(34,197,94,0.3)' : 'rgba(148,163,184,0.3)',
-                    }}>
-                      {isPng ? 'PNG' : 'SVG'}
-                    </Box>
-                  )}
+                <div className="mermaid-block" data-code={codeString}>
                   {isError ? (
                     <Box sx={{ color: '#ef4444', py: 2 }}>Mermaid render failed</Box>
-                  ) : isPng ? (
-                    <Box className="mermaid-svg-wrapper" sx={{ width: '100%' }}>
-                      <img src={pngUrl!} alt="mermaid diagram" style={{ maxWidth: '100%', height: 'auto', display: 'block' }} />
-                    </Box>
                   ) : (
                     <Box
                       className="mermaid-svg-wrapper"
@@ -503,11 +478,18 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
                     className="mermaid-fullscreen-btn"
                     title="Fullscreen"
                     aria-label="View diagram fullscreen"
-                    onClick={(e: React.MouseEvent) => {
+                    onClick={async (e: React.MouseEvent) => {
                       e.stopPropagation()
                       const parent = (e.currentTarget as HTMLElement).parentElement
-                      const svgEl = parent?.querySelector('svg')
-                      if (svgEl) openFullscreen(svgEl as SVGElement, isPng)
+                      const code = parent?.parentElement?.getAttribute('data-code') || ''
+                      // Try PNG cache first (tablet only)
+                      const pngUrl = code ? await getMermaidPng(code) : null
+                      if (pngUrl) {
+                        openFullscreenPng(pngUrl)
+                      } else {
+                        const svgEl = parent?.querySelector('svg')
+                        if (svgEl) openFullscreen(svgEl as SVGElement, false)
+                      }
                     }}
                     sx={{
                       position: 'absolute',

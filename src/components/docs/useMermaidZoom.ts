@@ -39,6 +39,14 @@ export function useMermaidZoom() {
     applyTransform()
   }, [applyTransform])
 
+  /** Open fullscreen with a PNG image (from cache). */
+  const openFullscreenPng = useCallback((pngUrl: string) => {
+    isPngRef.current = true
+    setZoomPercent(100)
+    transformRef.current = { zoom: 1, panX: 0, panY: 0 }
+    setFullscreenSvg(pngUrl) // store URL, MermaidFullscreen detects it
+  }, [])
+
   const openFullscreen = useCallback((el: SVGElement, isPng?: boolean) => {
     isPngRef.current = !!isPng
     const clone = el.cloneNode(true) as SVGElement
@@ -154,7 +162,7 @@ export function useMermaidZoom() {
   return {
     fullscreenSvg, isPng: isPngRef.current, zoomPercent, isDragging,
     canvasRef, contentRef,
-    openFullscreen, closeFullscreen,
+    openFullscreen, openFullscreenPng, closeFullscreen,
     zoomIn, zoomOut, resetView,
     onWheel, onDragStart, onTouchStart,
   }

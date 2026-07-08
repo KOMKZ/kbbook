@@ -12,6 +12,7 @@ import {
   setNetworkUrl,
   getSyncStatus,
   syncFromOSS,
+  normalizeSyncResult,
   readLocalDoc,
   type SyncStatus,
   type SyncResult,
@@ -98,7 +99,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
   const triggerSync = useCallback(async (ossCfg?: OssConfig): Promise<SyncResult> => {
     setState((s) => ({ ...s, syncing: true, syncResult: null }))
     try {
-      const result = await syncFromOSS(ossCfg)
+      const result = normalizeSyncResult(await syncFromOSS(ossCfg))
       const status = await getSyncStatus()
       setState((s) => ({ ...s, syncing: false, syncStatus: status, syncResult: result }))
       return result

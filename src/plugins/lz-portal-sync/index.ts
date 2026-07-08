@@ -103,13 +103,23 @@ export interface OssConfig {
   accessKeySecret?: string
 }
 
+export const normalizeSyncResult = (result?: Partial<SyncResult> | null): SyncResult => ({
+  fileCount: result?.fileCount ?? 0,
+  totalSize: result?.totalSize ?? 0,
+  version: result?.version ?? '',
+  skipped: result?.skipped ?? false,
+  added: result?.added ?? 0,
+  updated: result?.updated ?? 0,
+  deleted: result?.deleted ?? 0,
+})
+
 export const syncFromOSS = async (ossCfg?: OssConfig): Promise<SyncResult> => {
   if (isNative()) {
     // Pass user config to native plugin if provided
     if (ossCfg?.accessKeyId) {
-      return LZPortalSync.syncFromOSS(ossCfg)
+      return normalizeSyncResult(await LZPortalSync.syncFromOSS(ossCfg))
     }
-    return LZPortalSync.syncFromOSS()
+    return normalizeSyncResult(await LZPortalSync.syncFromOSS())
   }
   // Web mode: attempt a quick connectivity check with user config
   if (ossCfg?.endpoint && ossCfg?.bucket && ossCfg?.accessKeyId) {
@@ -117,12 +127,12 @@ export const syncFromOSS = async (ossCfg?: OssConfig): Promise<SyncResult> => {
       const url = `${ossCfg.endpoint}/${ossCfg.bucket}/${ossCfg.path || ''}/manifest.json`
       const resp = await fetch(url)
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      return { fileCount: 0, totalSize: 0, version: 'web-check', skipped: false, added: 0, updated: 0, deleted: 0 }
+      return normalizeSyncResult({ version: 'web-check' })
     } catch (e: any) {
       throw new Error(`OSS 连接失败: ${e.message}. 请检查 OSS 配置 (Endpoint/Bucket/Key)`)
     }
   }
-  return { fileCount: 0, totalSize: 0, version: 'web', skipped: true, added: 0, updated: 0, deleted: 0 }
+  return normalizeSyncResult({ version: 'web', skipped: true })
 }
 
 export const listenSyncProgress = (

@@ -9,7 +9,7 @@
  * Left sidebar: fixed, independent scroll
  * Right content: scrolls independently
  */
-import { useState, useEffect, type ReactNode } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { useMediaQuery } from '@mui/material'
 import Box from '@mui/material/Box'
 import List from '@mui/material/List'
@@ -43,7 +43,7 @@ import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import { useDocMode } from '../../contexts/DocModeContext'
 import { useToolbarSizeCtx } from '../../contexts/ToolbarSizeContext'
-import { listenSyncProgress, checkWebUpdate, getWebVersion, saveOssConfig as saveOssConfigNative, type SyncProgress } from '../../plugins/lz-portal-sync'
+import { listenSyncProgress, checkWebUpdate, getWebVersion, saveOssConfig as saveOssConfigNative, normalizeSyncResult, type SyncProgress, type SyncResult } from '../../plugins/lz-portal-sync'
 import { siteConfig } from '../../config/site'
 
 declare const __BUILD_TIME__: string
@@ -121,6 +121,26 @@ interface DocSyncDisplayResult {
   time: string
   skipped?: boolean
   error?: string
+}
+
+function toDocSyncDisplayResult(result?: Partial<SyncResult> | null): DocSyncDisplayResult {
+  const safe = normalizeSyncResult(result)
+  return {
+    added: safe.added,
+    updated: safe.updated,
+    deleted: safe.deleted,
+    fileCount: safe.fileCount,
+    skipped: safe.skipped,
+    time: new Date().toLocaleTimeString(),
+  }
+}
+
+async function writeDocSyncLog(level: 'info' | 'warn' | 'error', message: string, detail?: unknown) {
+  try {
+    const { debugLog } = await import('@/data/debug.js')
+    debugLog[level]('doc-sync', message, detail)
+    debugLog.flush()
+  } catch {}
 }
 
 // ============================================================
@@ -263,6 +283,7 @@ const SettingsPanel = () => {
   const [docResult, setDocResult] = useState<DocSyncDisplayResult | null>(null)
   const [webVersion, setWebVersion] = useState<string>('...')
   const [appVersion, setAppVersion] = useState<string>('...')
+  const docSyncInFlight = useRef(false)
 
   // OSS config
   const [ossCfg, setOssCfg] = useState(loadOssConfig)
@@ -323,41 +344,38 @@ const SettingsPanel = () => {
   const progressPercent = progress?.percent ?? 0
 
   const handleDocSync = async () => {
+    if (docSyncInFlight.current) {
+      await writeDocSyncLog('warn', '忽略重复文档同步点击')
+      return
+    }
+    docSyncInFlight.current = true
     setProgress(null)
     setDocResult(null)
     try {
-      const result = await triggerSync(ossCfg)
-      setDocResult({
-        added: result.added ?? 0,
-        updated: result.updated ?? 0,
-        deleted: result.deleted ?? 0,
-        fileCount: result.fileCount ?? 0,
-        skipped: result.skipped,
-        time: new Date().toLocaleTimeString(),
-      })
+      await writeDocSyncLog('info', '开始文档同步', { bucket: ossCfg.bucket, path: ossCfg.path, hasKey: !!ossCfg.accessKeyId })
+      const result = toDocSyncDisplayResult(await triggerSync(ossCfg))
+      setDocResult(result)
+      await writeDocSyncLog('info', '文档同步完成', result)
       if (result.skipped) {
         setToast({ message: '已是最新版本', severity: 'success' })
       } else {
-        setToast({ message: `同步完成: +${result.added ?? 0} ~${result.updated ?? 0} -${result.deleted ?? 0}`, severity: 'success' })
+        setToast({ message: `同步完成: +${result.added} ~${result.updated} -${result.deleted}`, severity: 'success' })
       }
     } catch (e: any) {
+      const message = e?.message || '同步失败'
       setProgress(null)
-      setDocResult({ added: 0, updated: 0, deleted: 0, fileCount: 0, time: new Date().toLocaleTimeString(), error: e?.message || '同步失败' })
-      setToast({ message: e?.message || '同步失败', severity: 'error' })
+      setDocResult({ added: 0, updated: 0, deleted: 0, fileCount: 0, time: new Date().toLocaleTimeString(), error: message })
+      setToast({ message, severity: 'error' })
+      await writeDocSyncLog('error', '文档同步失败', { message, stack: e?.stack })
+    } finally {
+      docSyncInFlight.current = false
     }
   }
 
   // Keep the persistent result box in sync if another UI path triggers document sync.
   useEffect(() => {
     if (!syncing && syncResult) {
-      setDocResult({
-        added: syncResult.added ?? 0,
-        updated: syncResult.updated ?? 0,
-        deleted: syncResult.deleted ?? 0,
-        fileCount: syncResult.fileCount ?? 0,
-        skipped: syncResult.skipped,
-        time: new Date().toLocaleTimeString(),
-      })
+      setDocResult(toDocSyncDisplayResult(syncResult))
     }
   }, [syncing, syncResult])
 

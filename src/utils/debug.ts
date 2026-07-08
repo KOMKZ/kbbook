@@ -32,7 +32,7 @@ function save() {
   try {
     const json = JSON.stringify(entries.slice(-MAX))
     localStorage.setItem(KEY, json)
-    try { const c = (window as any).Capacitor; if (c?.Plugins?.LZPortalSync?.writeDebugLog) c.Plugins.LZPortalSync.writeDebugLog({json}) } catch {}
+    try { if ((window as any).Capacitor?.isNativePlatform?.()) { const c=(window as any).Capacitor; if(c?.Plugins?.LZPortalSync?.writeDebugLog) c.Plugins.LZPortalSync.writeDebugLog({json}) } } catch {}
   } catch {}
 }
 

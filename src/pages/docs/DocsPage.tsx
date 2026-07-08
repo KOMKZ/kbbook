@@ -178,23 +178,27 @@ const DocsPage = () => {
     m.dataset.hlColor = color
     if (id != null) m.dataset.hlId = String(id)
     m.style.cssText = `background:${BG[color] || BG.yellow};border-radius:2px;padding:0 1px;cursor:default;position:relative`
-    // Delete button (hidden, shown on mark hover via CSS)
+    return m
+  }
+
+  /** Attach delete button AFTER surroundContents (which clears children). */
+  function attachDeleteBtn(mark: HTMLElement) {
+    if (mark.querySelector('.kb-hl-del')) return
     const del = document.createElement('span')
     del.className = 'kb-hl-del'
     del.textContent = '×'
     del.style.cssText = 'display:none;position:absolute;top:-7px;right:-5px;width:16px;height:16px;border-radius:50%;background:#ef4444;color:#fff;font-size:11px;line-height:16px;text-align:center;cursor:pointer;z-index:1'
     del.addEventListener('click', (ev) => {
       ev.stopPropagation()
-      const mark = (ev.target as HTMLElement).closest('.kb-hl-mark') as HTMLElement | null
-      if (!mark) return
-      const mid = Number(mark.dataset.hlId)
+      const m = (ev.target as HTMLElement).closest('.kb-hl-mark') as HTMLElement | null
+      if (!m) return
+      const mid = Number(m.dataset.hlId)
       if (!mid) return
-      const p = mark.parentNode
-      if (p) { while (mark.firstChild) p.insertBefore(mark.firstChild, mark); p.removeChild(mark); p.normalize() }
+      const p = m.parentNode
+      if (p) { while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m); p.normalize() }
       hl.remove(mid)
     })
-    m.appendChild(del)
-    return m
+    mark.appendChild(del)
   }
 
   /** Apply <mark> to range, with TreeWalker fallback for cross-node selections. */
@@ -202,6 +206,7 @@ const DocsPage = () => {
     try {
       const m = createMark(color, id)
       range.surroundContents(m)
+      attachDeleteBtn(m)
     } catch {
       // Cross-node: split by text nodes
       const tw = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT, {
@@ -218,7 +223,7 @@ const DocsPage = () => {
         else if (tn === range.endContainer) { nr.setStart(tn, 0); nr.setEnd(tn, range.endOffset) }
         else nr.selectNodeContents(tn)
         const m = createMark(color, id)
-        try { nr.surroundContents(m) } catch {}
+        try { nr.surroundContents(m); attachDeleteBtn(m) } catch {}
       }
     }
   }

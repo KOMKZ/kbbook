@@ -92,24 +92,23 @@ function svgToPngBlob(svgText: string, isDark: boolean): Promise<Blob> {
       const serializer = new XMLSerializer()
       const cleanSvg = serializer.serializeToString(svgEl)
 
-      // Create img from clean SVG (with explicit dimensions)
-      const svgBlob = new Blob([cleanSvg], { type: 'image/svg+xml;charset=utf-8' })
-      const url = URL.createObjectURL(svgBlob)
+      // Use data URI (not blob URL) — blob URLs taint canvas in Android WebView
+      const dataUri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(cleanSvg)
       const img = new Image()
       img.onload = () => {
         const cw = w * scale; const ch = h * scale
         const canvas = document.createElement('canvas')
         canvas.width = cw; canvas.height = ch
         const ctx = canvas.getContext('2d')
-        if (!ctx) { URL.revokeObjectURL(url); reject(new Error('no 2d context')); return }
+        if (!ctx) { reject(new Error('no 2d context')); return }
         ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'
         ctx.fillStyle = isDark ? '#0b0815' : '#ffffff'
         ctx.fillRect(0, 0, cw, ch)
         ctx.drawImage(img, 0, 0, cw, ch)
-        canvas.toBlob(blob => { URL.revokeObjectURL(url); if (blob) resolve(blob); else reject(new Error('toBlob failed')) }, 'image/png', 1.0)
+        canvas.toBlob(blob => { if (blob) resolve(blob); else reject(new Error('toBlob failed')) }, 'image/png', 1.0)
       }
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(`img load failed (${cleanSvg.length} chars)`)) }
-      img.src = url
+      img.onerror = () => { reject(new Error(`img load failed (${cleanSvg.length} chars)`)) }
+      img.src = dataUri
     } catch (e: any) {
       reject(new Error(`parser error: ${e.message}`))
     }

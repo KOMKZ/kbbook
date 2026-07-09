@@ -74,29 +74,18 @@ function svgToPngBlob(svgText: string, isDark: boolean): Promise<Blob> {
     const scale = Math.max(3, (window.devicePixelRatio || 2) * 3)
 
     try {
-      // Parse SVG string into DOM
-      const parser = new DOMParser()
-      const doc = parser.parseFromString(svgText, 'image/svg+xml')
-      const svgEl = doc.querySelector('svg')
-      if (!svgEl) { reject(new Error('no svg element')); return }
-
-      // Get dimensions — prefer viewBox (authoritative), fallback to width/height
-      const vb = svgEl.getAttribute('viewBox')
+      // Extract dimensions from viewBox (authoritative)
+      const vbMatch = svgText.match(/viewBox=["']([^"']+)["']/)
       let w = 800, h = 600
-      if (vb) { const p = vb.split(/[\s,]+/); if (p.length >= 4) { w = parseFloat(p[2]); h = parseFloat(p[3]) } }
-      // Only use width/height attrs if they're px values (not percentages)
-      const sw = svgEl.getAttribute('width') || ''
-      const sh = svgEl.getAttribute('height') || ''
-      if (sw && !sw.includes('%')) { const pw = parseFloat(sw); if (pw > 0) w = pw }
-      if (sh && !sh.includes('%')) { const ph = parseFloat(sh); if (ph > 0) h = ph }
+      if (vbMatch) { const p = vbMatch[1].split(/[\s,]+/); if (p.length >= 4) { w = parseFloat(p[2]); h = parseFloat(p[3]) } }
 
-      // Serialize back to clean SVG string
-      const serializer = new XMLSerializer()
-      const cleanSvg = serializer.serializeToString(svgEl)
+      // Fix percentage width/height in raw SVG string
+      let svg = svgText.trim()
+      svg = svg.replace(/ width="[^"]*%"/, ` width="${w}"`)
+      svg = svg.replace(/ height="[^"]*%"/, ` height="${h}"`)
 
-      // Use base64 data URI (not blob URL) — blob URLs taint canvas in Android WebView
-      // base64 avoids encodeURIComponent distortion on large/complex SVGs
-      const b64 = btoa(unescape(encodeURIComponent(cleanSvg)))
+      // Use base64 data URI — blob URLs taint canvas in Android WebView
+      const b64 = btoa(unescape(encodeURIComponent(svg)))
       const dataUri = 'data:image/svg+xml;base64,' + b64
       const img = new Image()
       img.onload = () => {
@@ -111,10 +100,10 @@ function svgToPngBlob(svgText: string, isDark: boolean): Promise<Blob> {
         ctx.drawImage(img, 0, 0, cw, ch)
         canvas.toBlob(blob => { if (blob) resolve(blob); else reject(new Error('toBlob failed')) }, 'image/png', 1.0)
       }
-      img.onerror = () => { reject(new Error(`img load failed (${cleanSvg.length} chars)`)) }
+      img.onerror = () => { reject(new Error(`img load failed (${svg.length} chars)`)) }
       img.src = dataUri
     } catch (e: any) {
-      reject(new Error(`parser error: ${e.message}`))
+      reject(new Error(`conversion error: ${e.message}`))
     }
   })
 }

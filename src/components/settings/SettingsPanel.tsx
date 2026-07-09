@@ -282,6 +282,16 @@ const SettingsPanel = () => {
 
   const isLocal = mode === 'local'
   const isSyncing = syncing || (progress != null && progress.stage !== 'done')
+
+  // Log sync result for debugging
+  useEffect(() => {
+    if (!syncing && syncResult) {
+      import('@/utils/debug.js').then(m => {
+        m.debugLog.info('sync', `同步结果: +${syncResult.added || 0} ~${syncResult.updated || 0} -${syncResult.deleted || 0} (${syncResult.fileCount || 0} files, skipped=${syncResult.skipped})`)
+        m.debugLog.flush()
+      })
+    }
+  }, [syncing, syncResult])
   const progressPercent = progress?.percent ?? 0
 
   const handleModeToggle = async () => {
@@ -298,12 +308,18 @@ const SettingsPanel = () => {
   const handleSync = async () => {
     setProgress(null)
     try {
+      const { debugLog } = await import('@/utils/debug.js')
+      debugLog.info('sync', '开始文档同步', { bucket: ossCfg.bucket, path: ossCfg.path, hasKey: !!ossCfg.accessKeyId })
       await triggerSync(ossCfg)
-      // Clear meta cache so nav picks up new articles
       const { clearDocsCache } = await import('@/utils/docs.js')
       clearDocsCache()
+      debugLog.info('sync', '文档同步完成')
+      debugLog.flush()
       setToast({ message: 'OSS 同步完成', severity: 'success' })
     } catch (e: any) {
+      const { debugLog } = await import('@/utils/debug.js')
+      debugLog.error('sync', '文档同步失败: ' + (e?.message || String(e)))
+      debugLog.flush()
       setProgress(null)
       setToast({ message: e?.message || 'OSS 同步失败，请检查网络连接', severity: 'error' })
     }

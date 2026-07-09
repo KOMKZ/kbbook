@@ -74,11 +74,15 @@ function svgToPngBlob(svgText: string, isDark: boolean): Promise<Blob> {
     const scale = Math.max(3, (window.devicePixelRatio || 2) * 3)
     const img = new Image()
 
-    // Sanitize SVG for Image loading: trim, ensure xmlns + width/height for foreignObject diagrams
+    // Sanitize SVG for Image loading: <img> can't resolve % dimensions → replace with viewBox defaults
     let svg = svgText.trim()
     if (!/xmlns=/.test(svg)) svg = svg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')
-    if (!/\bwidth=/.test(svg.substring(0, 200))) svg = svg.replace('<svg ', '<svg width="800" ')
-    if (!/\bheight=/.test(svg.substring(0, 200))) svg = svg.replace('<svg ', '<svg height="600" ')
+    // Fix percentage width/height — Image() needs explicit px values
+    svg = svg.replace(/width="[^"]*%"/, 'width="1200"')
+    svg = svg.replace(/height="[^"]*%"/, 'height="800"')
+    // Ensure viewBox exists (mermaid usually provides it)
+    if (!/\bviewBox=/.test(svg.substring(0, 300)) && !/\bwidth=/.test(svg.substring(0, 200)))
+      svg = svg.replace('<svg ', '<svg width="1200" height="800" ')
 
     const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
     const url = URL.createObjectURL(svgBlob)

@@ -74,6 +74,11 @@ function svgToPngBlob(svgText: string, isDark: boolean): Promise<Blob> {
     const scale = Math.max(3, (window.devicePixelRatio || 2) * 3)
 
     try {
+      // foreignObject SVGs (flowcharts) can't load as <img> — skip PNG, always use SVG
+      if (svgText.includes('<foreignObject')) {
+        return reject(new Error('skip: contains foreignObject'))
+      }
+
       // Extract dimensions from viewBox (authoritative)
       const vbMatch = svgText.match(/viewBox=["']([^"']+)["']/)
       let w = 800, h = 600

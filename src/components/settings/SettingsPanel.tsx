@@ -174,7 +174,7 @@ function saveOssConfig(cfg: typeof OSS_DEFAULTS) {
 
 function DebugServerSection() {
   const [enabled, setEnabled] = useState(() => localStorage.getItem('kbbook-debug-server') !== '0')
-  const [port, setPort] = useState(() => parseInt(localStorage.getItem('kbbook-debug-server-port') || '9123'))
+  const [port, setPort] = useState(() => parseInt(localStorage.getItem('kbbook-debug-server-port') || '49123'))
 
   const toggle = (on: boolean) => {
     setEnabled(on)
@@ -192,7 +192,7 @@ function DebugServerSection() {
         <Switch checked={enabled} onChange={(e) => toggle(e.target.checked)} />
         <Typography variant="body2">{enabled ? `已开启 :${port}` : '已关闭'}</Typography>
         <TextField size="small" type="number" value={port}
-          onChange={(e) => { const p = parseInt(e.target.value) || 9123; setPort(p); localStorage.setItem('kbbook-debug-server-port', String(p)) }}
+          onChange={(e) => { const p = parseInt(e.target.value) || 49123; setPort(p); localStorage.setItem('kbbook-debug-server-port', String(p)) }}
           sx={{ width: 80 }} disabled={!enabled}
           inputProps={{ min: 1024, max: 65535 }}
         />

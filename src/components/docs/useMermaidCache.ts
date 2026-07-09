@@ -68,47 +68,51 @@ async function cacheGet(key: string): Promise<Blob | null> {
   })
 }
 
-/** Convert SVG text to PNG Blob via canvas. */
+/** Convert SVG text to PNG Blob via canvas. Uses XMLSerializer approach to avoid foreignObject issues. */
 function svgToPngBlob(svgText: string, isDark: boolean): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const scale = Math.max(3, (window.devicePixelRatio || 2) * 3)
-    const img = new Image()
 
-    // Sanitize SVG for Image loading: <img> can't resolve % dimensions → replace with viewBox defaults
-    let svg = svgText.trim()
-    if (!/xmlns=/.test(svg)) svg = svg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')
-    // Fix percentage width/height — Image() needs explicit px values
-    svg = svg.replace(/width="[^"]*%"/, 'width="1200"')
-    svg = svg.replace(/height="[^"]*%"/, 'height="800"')
-    // Ensure viewBox exists (mermaid usually provides it)
-    if (!/\bviewBox=/.test(svg.substring(0, 300)) && !/\bwidth=/.test(svg.substring(0, 200)))
-      svg = svg.replace('<svg ', '<svg width="1200" height="800" ')
+    try {
+      // Parse SVG string into DOM
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(svgText, 'image/svg+xml')
+      const svgEl = doc.querySelector('svg')
+      if (!svgEl) { reject(new Error('no svg element')); return }
 
-    const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
-    const url = URL.createObjectURL(svgBlob)
-    img.onload = () => {
-      const w = img.naturalWidth * scale
-      const h = img.naturalHeight * scale
-      const canvas = document.createElement('canvas')
-      canvas.width = w; canvas.height = h
-      const ctx = canvas.getContext('2d')
-      if (!ctx) { URL.revokeObjectURL(url); reject(new Error('no 2d context')); return }
-      ctx.imageSmoothingEnabled = true
-      ctx.imageSmoothingQuality = 'high'
-      ctx.fillStyle = isDark ? '#0b0815' : '#ffffff'
-      ctx.fillRect(0, 0, w, h)
-      ctx.drawImage(img, 0, 0, w, h)
-      canvas.toBlob(blob => {
-        URL.revokeObjectURL(url)
-        if (blob) resolve(blob)
-        else reject(new Error('toBlob failed'))
-      }, 'image/png', 1.0)
+      // Get dimensions from viewBox or width/height
+      const vb = svgEl.getAttribute('viewBox')
+      let w = 800, h = 600
+      if (vb) { const p = vb.split(/[\s,]+/); if (p.length >= 4) { w = parseFloat(p[2]); h = parseFloat(p[3]) } }
+      const sw = parseFloat(svgEl.getAttribute('width') || '0')
+      const sh = parseFloat(svgEl.getAttribute('height') || '0')
+      if (sw > 0) w = sw; if (sh > 0) h = sh
+
+      // Serialize back to clean SVG string
+      const serializer = new XMLSerializer()
+      const cleanSvg = serializer.serializeToString(svgEl)
+
+      // Create img from clean SVG (with explicit dimensions)
+      const svgBlob = new Blob([cleanSvg], { type: 'image/svg+xml;charset=utf-8' })
+      const url = URL.createObjectURL(svgBlob)
+      const img = new Image()
+      img.onload = () => {
+        const cw = w * scale; const ch = h * scale
+        const canvas = document.createElement('canvas')
+        canvas.width = cw; canvas.height = ch
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { URL.revokeObjectURL(url); reject(new Error('no 2d context')); return }
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'
+        ctx.fillStyle = isDark ? '#0b0815' : '#ffffff'
+        ctx.fillRect(0, 0, cw, ch)
+        ctx.drawImage(img, 0, 0, cw, ch)
+        canvas.toBlob(blob => { URL.revokeObjectURL(url); if (blob) resolve(blob); else reject(new Error('toBlob failed')) }, 'image/png', 1.0)
+      }
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(`img load failed (${cleanSvg.length} chars)`)) }
+      img.src = url
+    } catch (e: any) {
+      reject(new Error(`parser error: ${e.message}`))
     }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error(`svg load failed (${svg.length} chars, starts: ${svg.substring(0, 60)})`))
-    }
-    img.src = url
   })
 }
 

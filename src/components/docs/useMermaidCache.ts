@@ -80,20 +80,24 @@ function svgToPngBlob(svgText: string, isDark: boolean): Promise<Blob> {
       const svgEl = doc.querySelector('svg')
       if (!svgEl) { reject(new Error('no svg element')); return }
 
-      // Get dimensions from viewBox or width/height
+      // Get dimensions — prefer viewBox (authoritative), fallback to width/height
       const vb = svgEl.getAttribute('viewBox')
       let w = 800, h = 600
       if (vb) { const p = vb.split(/[\s,]+/); if (p.length >= 4) { w = parseFloat(p[2]); h = parseFloat(p[3]) } }
-      const sw = parseFloat(svgEl.getAttribute('width') || '0')
-      const sh = parseFloat(svgEl.getAttribute('height') || '0')
-      if (sw > 0) w = sw; if (sh > 0) h = sh
+      // Only use width/height attrs if they're px values (not percentages)
+      const sw = svgEl.getAttribute('width') || ''
+      const sh = svgEl.getAttribute('height') || ''
+      if (sw && !sw.includes('%')) { const pw = parseFloat(sw); if (pw > 0) w = pw }
+      if (sh && !sh.includes('%')) { const ph = parseFloat(sh); if (ph > 0) h = ph }
 
       // Serialize back to clean SVG string
       const serializer = new XMLSerializer()
       const cleanSvg = serializer.serializeToString(svgEl)
 
-      // Use data URI (not blob URL) — blob URLs taint canvas in Android WebView
-      const dataUri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(cleanSvg)
+      // Use base64 data URI (not blob URL) — blob URLs taint canvas in Android WebView
+      // base64 avoids encodeURIComponent distortion on large/complex SVGs
+      const b64 = btoa(unescape(encodeURIComponent(cleanSvg)))
+      const dataUri = 'data:image/svg+xml;base64,' + b64
       const img = new Image()
       img.onload = () => {
         const cw = w * scale; const ch = h * scale

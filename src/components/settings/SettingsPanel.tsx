@@ -315,7 +315,7 @@ const SettingsPanel = () => {
       clearDocsCache()
       debugLog.info('sync', '文档同步完成')
       debugLog.flush()
-      setToast({ message: 'OSS 同步完成', severity: 'success' })
+      setToast({ message: '同步完成，下拉刷新页面查看最新内容', severity: 'success' })
     } catch (e: any) {
       const { debugLog } = await import('@/utils/debug.js')
       debugLog.error('sync', '文档同步失败: ' + (e?.message || String(e)))

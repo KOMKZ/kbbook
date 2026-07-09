@@ -67,6 +67,8 @@ export interface LZPortalSyncPlugin {
   getWebVersion(): Promise<WebVersionResult>
   addListener(eventName: 'syncProgress', callback: (data: SyncProgress) => void): Promise<PluginListenerHandle>
   saveOssConfig(options: { endpoint?: string; bucket?: string; path?: string; accessKeyId?: string; accessKeySecret?: string }): Promise<void>
+  startDebugServer(options: { port: number }): Promise<{ port: number; status: string }>
+  stopDebugServer(): Promise<void>
 }
 
 const LZPortalSync = registerPlugin<LZPortalSyncPlugin>('LZPortalSync')
@@ -194,4 +196,15 @@ export const getWebVersion = async (): Promise<string> => {
     try { const r = await LZPortalSync.getWebVersion(); return r.version } catch { return '0' }
   }
   return '0'
+}
+
+// === Debug HTTP Server ===
+
+export const startDebugServer = async (port = 9123): Promise<{ port: number; status: string }> => {
+  if (isNative()) return LZPortalSync.startDebugServer({ port })
+  return { port, status: 'web-skipped' }
+}
+
+export const stopDebugServer = async (): Promise<void> => {
+  if (isNative()) { try { await LZPortalSync.stopDebugServer() } catch {} }
 }

@@ -20,6 +20,15 @@ setTimeout(() => {
   } catch(e) {}
 }, 500)
 
+// 启动调试 HTTP 服务器（仅 native 环境生效，默认开启）
+setTimeout(() => {
+  const enabled = localStorage.getItem('kbbook-debug-server') !== '0'
+  if (enabled) {
+    const port = parseInt(localStorage.getItem('kbbook-debug-server-port') || '9123')
+    import('./plugins/lz-portal-sync/index.js').then(m => m.startDebugServer(port)).catch(() => {})
+  }
+}, 1000)
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>

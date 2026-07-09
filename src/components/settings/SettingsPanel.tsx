@@ -29,6 +29,8 @@ import CircularProgress from '@mui/material/CircularProgress'
 import LinearProgress from '@mui/material/LinearProgress'
 import CloudSyncIcon from '@mui/icons-material/CloudSync'
 import BugReportIcon from '@mui/icons-material/BugReport'
+import SwitchRightIcon from '@mui/icons-material/SwitchRight'
+import Switch from '@mui/material/Switch'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
@@ -170,6 +172,35 @@ function saveOssConfig(cfg: typeof OSS_DEFAULTS) {
 // ============================================================
 // Debug Panel
 // ============================================================
+
+function DebugServerSection() {
+  const [enabled, setEnabled] = useState(() => localStorage.getItem('kbbook-debug-server') !== '0')
+  const [port, setPort] = useState(() => parseInt(localStorage.getItem('kbbook-debug-server-port') || '9123'))
+
+  const toggle = (on: boolean) => {
+    setEnabled(on)
+    localStorage.setItem('kbbook-debug-server', on ? '1' : '0')
+    if (on) {
+      import('../../plugins/lz-portal-sync/index.js').then(m => m.startDebugServer(port))
+    } else {
+      import('../../plugins/lz-portal-sync/index.js').then(m => m.stopDebugServer())
+    }
+  }
+
+  return (
+    <Section title="调试端口" subtitle={`App 内部 HTTP 服务器（adb reverse tcp:${port} tcp:${port} → curl localhost:${port}/debug）`} icon={<SwitchRightIcon color="primary" />}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Switch checked={enabled} onChange={(e) => toggle(e.target.checked)} />
+        <Typography variant="body2">{enabled ? `已开启 :${port}` : '已关闭'}</Typography>
+        <TextField size="small" type="number" value={port}
+          onChange={(e) => { const p = parseInt(e.target.value) || 9123; setPort(p); localStorage.setItem('kbbook-debug-server-port', String(p)) }}
+          sx={{ width: 80 }} disabled={!enabled}
+          inputProps={{ min: 1024, max: 65535 }}
+        />
+      </Box>
+    </Section>
+  )
+}
 
 function DebugPanel() {
   const [entries, setEntries] = useState<Array<{id:number;timestamp:number;level:string;module:string;message:string;detail?:string}>>([])
@@ -424,6 +455,8 @@ const SettingsPanel = () => {
                 {isSyncing ? '同步中...' : '立即同步'}
               </Button>
             </Section>
+
+            <DebugServerSection />
           </>
         )
 

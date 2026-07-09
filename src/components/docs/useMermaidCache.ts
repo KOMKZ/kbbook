@@ -71,9 +71,16 @@ async function cacheGet(key: string): Promise<Blob | null> {
 /** Convert SVG text to PNG Blob via canvas. */
 function svgToPngBlob(svgText: string, isDark: boolean): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    const scale = Math.max(3, (window.devicePixelRatio || 2) * 3) // 3x minimum, 6x on 2x screens
+    const scale = Math.max(3, (window.devicePixelRatio || 2) * 3)
     const img = new Image()
-    const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' })
+
+    // Sanitize SVG for Image loading: trim, ensure xmlns + width/height for foreignObject diagrams
+    let svg = svgText.trim()
+    if (!/xmlns=/.test(svg)) svg = svg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')
+    if (!/\bwidth=/.test(svg.substring(0, 200))) svg = svg.replace('<svg ', '<svg width="800" ')
+    if (!/\bheight=/.test(svg.substring(0, 200))) svg = svg.replace('<svg ', '<svg height="600" ')
+
+    const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
     const url = URL.createObjectURL(svgBlob)
     img.onload = () => {
       const w = img.naturalWidth * scale
@@ -84,7 +91,6 @@ function svgToPngBlob(svgText: string, isDark: boolean): Promise<Blob> {
       if (!ctx) { URL.revokeObjectURL(url); reject(new Error('no 2d context')); return }
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = 'high'
-      // Fill background matching current theme so PNG isn't transparent/white
       ctx.fillStyle = isDark ? '#0b0815' : '#ffffff'
       ctx.fillRect(0, 0, w, h)
       ctx.drawImage(img, 0, 0, w, h)
@@ -92,9 +98,12 @@ function svgToPngBlob(svgText: string, isDark: boolean): Promise<Blob> {
         URL.revokeObjectURL(url)
         if (blob) resolve(blob)
         else reject(new Error('toBlob failed'))
-      }, 'image/png', 1.0) // max quality
+      }, 'image/png', 1.0)
     }
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('svg load failed')) }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error(`svg load failed (${svg.length} chars, starts: ${svg.substring(0, 60)})`))
+    }
     img.src = url
   })
 }

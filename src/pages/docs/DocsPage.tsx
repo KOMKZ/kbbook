@@ -46,7 +46,8 @@ import {
   type ResolvedVersionInfo,
   type DocMeta,
 } from '../../utils/docs'
-import Breadcrumbs, { locate } from '../../components/docs/Breadcrumbs'
+import { locate } from '../../components/docs/Breadcrumbs'
+import ArticlePathBar from '../../components/docs/ArticlePathBar'
 import { siteConfig } from '../../config/site'
 import PrevNextNavigator from '../../components/docs/PrevNextNavigator'
 import SpeechBar from '../../components/docs/SpeechBar'
@@ -142,7 +143,6 @@ const DocsPage = () => {
   const inRange = (v: number) => v >= FONT_SCALE_MIN && v <= FONT_SCALE_MAX
   const [fontScaleNormal, setFontScaleNormal] = usePersistentState<number>('fontScale.normal', 1, inRange)
   const [fontScaleFull, setFontScaleFull] = usePersistentState<number>('fontScale.fullscreen', 1, inRange)
-  const [stickyTitleHidden, setStickyTitleHidden] = usePersistentState<boolean>('stickyTitle.hidden', false)
   const [fullscreen, setFullscreen] = useState(false)
 
   // Highlight / Notes
@@ -540,8 +540,6 @@ const DocsPage = () => {
             <ArticleToolPanel
               fontScale={fontScale}
               onFontScaleChange={handleFontScaleChange}
-              stickyTitleHidden={stickyTitleHidden}
-              onToggleStickyTitle={() => setStickyTitleHidden((v) => !v)}
               readProgress={readProgress}
             />
             {/* TTS */}
@@ -808,9 +806,7 @@ const DocsPage = () => {
             ) : (
               <>
                 {!fullscreen && seriesId && slug && (
-                  <Box sx={{ maxWidth: 780, mx: 'auto', mb: 2 }}>
-                    <Breadcrumbs seriesId={seriesId} slug={slug} docs={docs} />
-                  </Box>
+                  <ArticlePathBar seriesId={seriesId} slug={slug} docs={docs} />
                 )}
                 {content && (
                   <Box sx={{ maxWidth: 780, mx: 'auto', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -824,8 +820,6 @@ const DocsPage = () => {
                 <MarkdownRenderer
                   content={content}
                   scale={fontScale}
-                  headerOffset={fullscreen ? 0 : undefined /* 非全屏时由 CSS 变量 --header-height 控制 */}
-                  hideStickyTitle={stickyTitleHidden}
                 />
                 {seriesId && slug && (
                   <PrevNextNavigator

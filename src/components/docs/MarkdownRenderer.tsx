@@ -90,14 +90,9 @@ interface MarkdownRendererProps {
   content: string
   /** 整体缩放比例(1 = 100%),所有元素按比例同步缩放 */
   scale?: number
-  /** 吸顶标题要避让的顶栏高度(px)。全屏无顶栏时传 0 */
-  headerOffset?: number
-  hideStickyTitle?: boolean
 }
 
-/**
- * 吸顶 H1:滚动时固定在顶部,带"复制标题"按钮(复制 [TXX-AYY] 编码 + 标题文本)
- */
+/** 文章主标题 H1(普通标题,随内容一起向上滚动) */
 const PlainH1 = ({ children }: { children: ReactNode }) => (
   <Typography
     variant="h1"
@@ -112,74 +107,7 @@ const PlainH1 = ({ children }: { children: ReactNode }) => (
   </Typography>
 )
 
-const StickyH1 = ({ children }: { children: ReactNode }) => {
-  const [copied, setCopied] = useState(false)
-  const titleText = String(
-    Array.isArray(children)
-      ? children.map((c) => (typeof c === 'string' ? c : '')).join('')
-      : children,
-  )
-  const handleCopy = useCallback(() => {
-    if (!titleText) return
-    navigator.clipboard.writeText(titleText).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
-  }, [titleText])
-
-  return (
-    <Box
-      sx={(theme) => ({
-        position: 'sticky',
-        // zoom 缩放下顶部偏移会被一起放大导致吸顶错位;除以缩放比例抵消。
-        // 偏移量随模式变化:正常 = 顶栏高度,全屏 = 0(见根容器 --reader-sticky-top / --reader-scale)
-        top: 'calc(var(--reader-sticky-top, var(--header-height, 64px)) / var(--reader-scale, 1))',
-        zIndex: 10,
-        mt: 0,
-        mb: 3,
-        pt: 2,
-        pb: 1.5,
-        borderBottom: 2,
-        borderColor: 'primary.main',
-        bgcolor: theme.palette.mode === 'dark' ? 'rgba(18, 18, 18, 0.92)' : 'rgba(255, 255, 255, 0.92)',
-        backdropFilter: 'blur(10px)',
-        WebkitBackdropFilter: 'blur(10px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 2,
-      })}
-    >
-      <Typography
-        variant="h1"
-        component="h1"
-        sx={{
-          m: 0,
-          color: 'text.primary',
-          flex: 1,
-          minWidth: 0,
-        }}
-      >
-        {children}
-      </Typography>
-      <Tooltip title={copied ? '已复制' : '复制标题'} placement="left">
-        <IconButton
-          onClick={handleCopy}
-          size="small"
-          sx={{
-            flexShrink: 0,
-            color: copied ? 'success.main' : 'text.secondary',
-            '&:hover': { color: 'primary.main' },
-          }}
-        >
-          <ContentCopyIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
-    </Box>
-  )
-}
-
-const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTitle = false }: MarkdownRendererProps) => {
+const MarkdownRenderer = ({ content, scale = 1 }: MarkdownRendererProps) => {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
   const containerRef = useRef<HTMLDivElement>(null)
@@ -261,7 +189,7 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
   return (
     <Box
       ref={containerRef}
-      style={{ zoom: scale, '--reader-scale': scale, '--reader-sticky-top': `${headerOffset}px` } as CSSProperties}
+      style={{ zoom: scale, '--reader-scale': scale } as CSSProperties}
       sx={{
         // 内容区最大宽度限制 - 提升阅读舒适度
         maxWidth: 780,
@@ -301,7 +229,7 @@ const MarkdownRenderer = ({ content, scale = 1, headerOffset = 64, hideStickyTit
           // ========================================
           
           // H1: 页面主标题 - 可切换是否吸顶
-          h1: ({ children }) => (hideStickyTitle ? <PlainH1>{children}</PlainH1> : <StickyH1>{children}</StickyH1>),
+          h1: ({ children }) => <PlainH1>{children}</PlainH1>,
 
           // H2: 章节标题 - 像分割线
           h2: ({ children }) => (

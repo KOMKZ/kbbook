@@ -10,8 +10,6 @@ import TuneIcon from '@mui/icons-material/Tune'
 import TextDecreaseIcon from '@mui/icons-material/TextDecrease'
 import TextIncreaseIcon from '@mui/icons-material/TextIncrease'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
-import PushPinIcon from '@mui/icons-material/PushPin'
-import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined'
 import CircularProgress from '@mui/material/CircularProgress'
 
 export const FONT_SCALE_MIN = 0.8
@@ -23,13 +21,11 @@ const clamp = (v: number) => Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, M
 interface Props {
   fontScale: number
   onFontScaleChange: (scale: number) => void
-  stickyTitleHidden: boolean
-  onToggleStickyTitle: () => void
   readProgress: number
 }
 
-/** Article-specific tool panel: font scale, sticky title, reading progress */
-const ArticleToolPanel = ({ fontScale, onFontScaleChange, stickyTitleHidden, onToggleStickyTitle, readProgress }: Props) => {
+/** Article-specific tool panel: font scale, reading progress */
+const ArticleToolPanel = ({ fontScale, onFontScaleChange, readProgress }: Props) => {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const pct = Math.round(fontScale * 100)
 
@@ -56,19 +52,6 @@ const ArticleToolPanel = ({ fontScale, onFontScaleChange, stickyTitleHidden, onT
             <Typography variant="body2" sx={{ minWidth: 36, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{pct}%</Typography>
             <Tooltip title="放大"><span><IconButton size="small" onClick={() => onFontScaleChange(clamp(fontScale + FONT_STEP))} disabled={fontScale >= FONT_SCALE_MAX}><TextIncreaseIcon fontSize="small" /></IconButton></span></Tooltip>
             <Tooltip title="恢复"><span><IconButton size="small" onClick={() => onFontScaleChange(1)} disabled={fontScale === 1}><RestartAltIcon fontSize="small" /></IconButton></span></Tooltip>
-          </Box>
-
-          <Divider sx={{ my: 1.5 }} />
-
-          {/* Sticky title */}
-          <Typography variant="caption" color="text.secondary" fontWeight={600}>顶部标题</Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
-            <Typography variant="body2" color="text.secondary">{stickyTitleHidden ? '已隐藏' : '显示中'}</Typography>
-            <Tooltip title={stickyTitleHidden ? '显示' : '隐藏'}>
-              <IconButton size="small" onClick={onToggleStickyTitle} color={stickyTitleHidden ? 'default' : 'primary'}>
-                {stickyTitleHidden ? <PushPinOutlinedIcon fontSize="small" /> : <PushPinIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
           </Box>
 
           <Divider sx={{ my: 1.5 }} />

@@ -207,11 +207,15 @@ const MarkdownRenderer = ({ content, scale = 1 }: MarkdownRendererProps) => {
       requestAnimationFrame(() => { ticking = false; pump() })
     }
 
-    pump() // 首屏
+    // 首屏 + 补跑:阅读位置恢复会在挂载后(最迟 ~1500ms)把页面滚到记忆位置,
+    // 补几次 pump 覆盖"落在某处但没有后续滚动"的情况,避免该处图表一直停在 loading。
+    pump()
+    const timers = [200, 700, 1600, 2600].map((d) => window.setTimeout(pump, d))
     window.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('resize', onScroll, { passive: true })
     return () => {
       cancelled = true
+      timers.forEach((t) => clearTimeout(t))
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onScroll)
     }

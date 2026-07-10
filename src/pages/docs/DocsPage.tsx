@@ -806,7 +806,7 @@ const DocsPage = () => {
             ) : (
               <>
                 {!fullscreen && seriesId && slug && (
-                  <ArticlePathBar seriesId={seriesId} slug={slug} docs={docs} />
+                  <ArticlePathBar seriesId={seriesId} slug={slug} docs={docs} sidebarCollapsed={sidebarCollapsed} />
                 )}
                 {content && (
                   <Box sx={{ maxWidth: 780, mx: 'auto', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>

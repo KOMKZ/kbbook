@@ -164,14 +164,6 @@ const MarkdownRenderer = ({ content, scale = 1 }: MarkdownRendererProps) => {
     let ticking = false
     const done = new Set<string>()
 
-    const win = window as unknown as {
-      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number
-    }
-    const deferIdle = (cb: () => void) =>
-      typeof win.requestIdleCallback === 'function'
-        ? win.requestIdleCallback(cb, { timeout: 2000 })
-        : window.setTimeout(cb, 300)
-
     const nearViewport = (el: Element) => {
       const r = el.getBoundingClientRect()
       return r.bottom > -800 && r.top < window.innerHeight + 800
@@ -192,7 +184,7 @@ const MarkdownRenderer = ({ content, scale = 1 }: MarkdownRendererProps) => {
         const { svg } = await mermaid.render(`mermaid-${Date.now()}-${mermaidRenderCount++}`, code)
         if (!cancelled) {
           setMermaidSvgs((prev) => (prev[code] ? prev : { ...prev, [code]: svg }))
-          deferIdle(() => { if (!cancelled) cacheSvgLater(code, svg, isDark) })
+          cacheSvgLater(code, svg, isDark) // SVG→PNG 缓存(全屏图片模式用);重活在 Image.onload 内异步,不阻塞渲染/滚动
         }
       } catch {
         if (!cancelled) setMermaidSvgs((prev) => (code in prev ? prev : { ...prev, [code]: '' }))

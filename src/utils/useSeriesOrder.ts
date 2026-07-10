@@ -63,8 +63,12 @@ export function useSeriesOrder(rawList: Series[]): [Series[], (fromIndex: number
 
   const reorder = useCallback((fromIndex: number, toIndex: number) => {
     setSavedOrder((prevOrder) => {
-      const base = prevOrder.length > 0 ? prevOrder : rawList.map((s) => s.id)
-      const next = [...base]
+      // Merge prevOrder with current rawList so new series are included
+      const currentIds = rawList.map((s) => s.id)
+      const merged = prevOrder.length > 0
+        ? [...new Set([...prevOrder.filter(id => id && currentIds.includes(id)), ...currentIds])]
+        : currentIds
+      const next = [...merged]
       const [id] = next.splice(fromIndex, 1)
       next.splice(toIndex, 0, id)
       saveOrder(next)

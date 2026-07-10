@@ -167,10 +167,11 @@ const MarkdownRenderer = ({ content, scale = 1 }: MarkdownRendererProps) => {
     const win = window as unknown as {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number
     }
-    const idle = (cb: () => void, timeout = 800) =>
+    // 背景任务(SVG→PNG 缓存)延到空闲即可;主渲染改用 rAF 及时出图,不能也拖进 idle 变慢
+    const deferIdle = (cb: () => void) =>
       typeof win.requestIdleCallback === 'function'
-        ? win.requestIdleCallback(cb, { timeout })
-        : window.setTimeout(cb, 32)
+        ? win.requestIdleCallback(cb, { timeout: 2000 })
+        : window.setTimeout(cb, 300)
 
     const renderOne = async (block: HTMLElement) => {
       const code = block.getAttribute('data-code')
@@ -182,19 +183,20 @@ const MarkdownRenderer = ({ content, scale = 1 }: MarkdownRendererProps) => {
         if (cancelled) return
         setMermaidSvgs(prev => (prev[code] ? prev : { ...prev, [code]: svg }))
         // SVG→PNG 缓存(平板全屏用)延到空闲,避免与滚动争主线程
-        idle(() => { if (!cancelled) cacheSvgLater(code, svg, isDark) }, 2000)
+        deferIdle(() => { if (!cancelled) cacheSvgLater(code, svg, isDark) })
       } catch {
         if (!cancelled) setMermaidSvgs(prev => (code in prev ? prev : { ...prev, [code]: '' }))
       }
     }
 
-    // 逐个渲染:一个渲染完再排下一个,每个在空闲时段跑,给滚动/绘制留出主线程
+    // 逐个渲染:每个安排在下一帧(rAF)执行,渲完一个再排下一个——只处理进入视口的图,
+    // 且帧间让出主线程,滚动/绘制不被长时间独占(idle 排队会拖太慢,故用 rAF 及时出图)
     const pump = () => {
       if (running || cancelled) return
       const next = queue.shift()
       if (!next) return
       running = true
-      idle(async () => {
+      window.requestAnimationFrame(async () => {
         await renderOne(next)
         running = false
         if (!cancelled) pump()

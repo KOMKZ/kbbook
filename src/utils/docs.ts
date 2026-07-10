@@ -12,7 +12,7 @@ import { defaultLanguage, type LanguageCode } from '../i18n'
 
 // === Doc loader configuration (set by DocModeContext) ===
 
-let _docBaseUrl = ''
+let _docBaseUrl = 'http://192.168.3.213:3004'  // Default to LAN dev server for network mode
 let _readLocalDoc: ((path: string) => Promise<string>) | null = null
 
 /**
@@ -24,7 +24,13 @@ export function configureDocLoader(opts: {
   baseUrl?: string
   readLocalDoc?: ((path: string) => Promise<string>) | null
 }) {
-  if (opts.baseUrl !== undefined) _docBaseUrl = opts.baseUrl
+  if (opts.baseUrl !== undefined && opts.baseUrl !== _docBaseUrl) {
+    _docBaseUrl = opts.baseUrl
+    // Clear caches so next loadSeriesRegistry/loadDocsMeta re-fetches from new URL
+    seriesCache = null
+    versionsCache = null
+    clearDocsCache()
+  }
   if (opts.readLocalDoc !== undefined) _readLocalDoc = opts.readLocalDoc
 }
 

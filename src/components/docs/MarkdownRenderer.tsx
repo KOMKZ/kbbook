@@ -10,6 +10,7 @@ import mermaid from 'mermaid'
 import { useTheme } from '@mui/material/styles'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
+import CircularProgress from '@mui/material/CircularProgress'
 import Paper from '@mui/material/Paper'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -152,69 +153,68 @@ const MarkdownRenderer = ({ content, scale = 1 }: MarkdownRendererProps) => {
   useEffect(() => { setMermaidSvgs({}); setRenderKey(k => k + 1) }, [isDark])
 
   // Mermaid 懒渲染 —— 避免"图多的文章一进来就把所有图表同步生成"阻塞阅读/滚动。
-  // 只在图表接近视口(IntersectionObserver, 预留 800px)时才渲染,且逐个经 requestIdleCallback
-  // 排队、每个之间让出主线程;平板的 SVG→PNG 缓存进一步延到空闲执行,SVG 先出、滚动不卡。
+  // 只渲染滚到视口附近(±800px)的图,逐个 rAF 让出主线程;每次重新查 DOM(react-markdown
+  // 重渲染会重建节点,不能缓存节点引用),用 done 集合按图源去重;背景 SVG→PNG 缓存延到空闲。
   useEffect(() => {
     const root = containerRef.current
     if (!root) return
-    const blocks = Array.from(root.querySelectorAll<HTMLElement>('.mermaid-block'))
-    if (blocks.length === 0) return
 
     let cancelled = false
-    const queue: HTMLElement[] = []
     let running = false
+    let ticking = false
+    const done = new Set<string>()
 
     const win = window as unknown as {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number
     }
-    // 背景任务(SVG→PNG 缓存)延到空闲即可;主渲染改用 rAF 及时出图,不能也拖进 idle 变慢
     const deferIdle = (cb: () => void) =>
       typeof win.requestIdleCallback === 'function'
         ? win.requestIdleCallback(cb, { timeout: 2000 })
         : window.setTimeout(cb, 300)
 
-    const renderOne = async (block: HTMLElement) => {
-      const code = block.getAttribute('data-code')
-      // 已渲染(DOM 里已有 SVG)或无 code → 跳过
-      if (!code || block.querySelector('.mermaid-svg-wrapper svg')) return
-      try {
-        const uniqueId = `mermaid-${Date.now()}-${mermaidRenderCount++}`
-        const { svg } = await mermaid.render(uniqueId, code)
-        if (cancelled) return
-        setMermaidSvgs(prev => (prev[code] ? prev : { ...prev, [code]: svg }))
-        // SVG→PNG 缓存(平板全屏用)延到空闲,避免与滚动争主线程
-        deferIdle(() => { if (!cancelled) cacheSvgLater(code, svg, isDark) })
-      } catch {
-        if (!cancelled) setMermaidSvgs(prev => (code in prev ? prev : { ...prev, [code]: '' }))
-      }
+    const nearViewport = (el: Element) => {
+      const r = el.getBoundingClientRect()
+      return r.bottom > -800 && r.top < window.innerHeight + 800
     }
 
-    // 逐个渲染:每个安排在下一帧(rAF)执行,渲完一个再排下一个——只处理进入视口的图,
-    // 且帧间让出主线程,滚动/绘制不被长时间独占(idle 排队会拖太慢,故用 rAF 及时出图)
-    const pump = () => {
-      if (running || cancelled) return
-      const next = queue.shift()
-      if (!next) return
-      running = true
-      window.requestAnimationFrame(async () => {
-        await renderOne(next)
-        running = false
-        if (!cancelled) pump()
+    // 找到"视口附近、尚未渲染"的下一张图并渲染,渲完继续排下一张(rAF 让步)
+    const pump = async () => {
+      if (cancelled || running) return
+      const block = Array.from(root.querySelectorAll<HTMLElement>('.mermaid-block')).find((b) => {
+        const c = b.getAttribute('data-code')
+        return !!c && !done.has(c) && nearViewport(b)
       })
+      if (!block) return
+      const code = block.getAttribute('data-code') as string
+      done.add(code) // 立刻标记,防止异步渲染期间被重复选中
+      running = true
+      try {
+        const { svg } = await mermaid.render(`mermaid-${Date.now()}-${mermaidRenderCount++}`, code)
+        if (!cancelled) {
+          setMermaidSvgs((prev) => (prev[code] ? prev : { ...prev, [code]: svg }))
+          deferIdle(() => { if (!cancelled) cacheSvgLater(code, svg, isDark) })
+        }
+      } catch {
+        if (!cancelled) setMermaidSvgs((prev) => (code in prev ? prev : { ...prev, [code]: '' }))
+      }
+      running = false
+      if (!cancelled) requestAnimationFrame(pump)
     }
 
-    const io = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        if (e.isIntersecting) {
-          io.unobserve(e.target)
-          queue.push(e.target as HTMLElement)
-        }
-      }
-      pump()
-    }, { rootMargin: '800px 0px' })
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => { ticking = false; pump() })
+    }
 
-    blocks.forEach(b => io.observe(b))
-    return () => { cancelled = true; io.disconnect() }
+    pump() // 首屏
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll, { passive: true })
+    return () => {
+      cancelled = true
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
   }, [renderKey, isDark, cacheSvgLater])
 
   useEffect(() => {
@@ -429,15 +429,21 @@ const MarkdownRenderer = ({ content, scale = 1 }: MarkdownRendererProps) => {
             if (language === 'mermaid') {
               const cachedSvg = mermaidSvgs[codeString]
               const isError = cachedSvg === ''
+              const isPending = cachedSvg === undefined
               return (
                 <div className="mermaid-block" data-code={codeString}>
                   {isError ? (
                     <Box sx={{ color: '#ef4444', py: 2 }}>Mermaid render failed</Box>
+                  ) : isPending ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, py: 4, minHeight: 80, color: 'text.secondary' }}>
+                      <CircularProgress size={18} thickness={5} />
+                      <Typography variant="caption">图表生成中…</Typography>
+                    </Box>
                   ) : (
                     <Box
                       className="mermaid-svg-wrapper"
                       sx={{ width: '100%' }}
-                      dangerouslySetInnerHTML={cachedSvg ? { __html: cachedSvg } : undefined}
+                      dangerouslySetInnerHTML={{ __html: cachedSvg }}
                     />
                   )}
                   <Box

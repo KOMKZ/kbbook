@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, type ReactNode, type CSSProperties } from 'react'
+import React, { useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -143,44 +143,77 @@ const MarkdownRenderer = ({ content, scale = 1 }: MarkdownRendererProps) => {
     mermaid.initialize({ startOnLoad: false, ...themeConfig })
   }, [isDark])
 
-  // Mermaid 渲染
-  const renderMermaidDiagrams = useCallback(async () => {
-    if (!containerRef.current) return
-    const mermaidBlocks = containerRef.current.querySelectorAll('.mermaid-block')
+  // Prism 代码高亮
+  useEffect(() => {
+    Prism.highlightAll()
+  }, [content, renderKey])
 
-    const newSvgs: Record<string, string> = {}
+  // 主题切换:清空已缓存 SVG 并重渲染,换用对应主题配色
+  useEffect(() => { setMermaidSvgs({}); setRenderKey(k => k + 1) }, [isDark])
 
-    for (let i = 0; i < mermaidBlocks.length; i++) {
-      const block = mermaidBlocks[i] as HTMLElement
+  // Mermaid 懒渲染 —— 避免"图多的文章一进来就把所有图表同步生成"阻塞阅读/滚动。
+  // 只在图表接近视口(IntersectionObserver, 预留 800px)时才渲染,且逐个经 requestIdleCallback
+  // 排队、每个之间让出主线程;平板的 SVG→PNG 缓存进一步延到空闲执行,SVG 先出、滚动不卡。
+  useEffect(() => {
+    const root = containerRef.current
+    if (!root) return
+    const blocks = Array.from(root.querySelectorAll<HTMLElement>('.mermaid-block'))
+    if (blocks.length === 0) return
+
+    let cancelled = false
+    const queue: HTMLElement[] = []
+    let running = false
+
+    const win = window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number
+    }
+    const idle = (cb: () => void, timeout = 800) =>
+      typeof win.requestIdleCallback === 'function'
+        ? win.requestIdleCallback(cb, { timeout })
+        : window.setTimeout(cb, 32)
+
+    const renderOne = async (block: HTMLElement) => {
       const code = block.getAttribute('data-code')
-      // 跳过已渲染的：检查 mermaid-svg-wrapper 里是否有 SVG（排除全屏按钮里的图标 SVG）
-      if (!code || block.querySelector('.mermaid-svg-wrapper svg')) continue
-
+      // 已渲染(DOM 里已有 SVG)或无 code → 跳过
+      if (!code || block.querySelector('.mermaid-svg-wrapper svg')) return
       try {
         const uniqueId = `mermaid-${Date.now()}-${mermaidRenderCount++}`
         const { svg } = await mermaid.render(uniqueId, code)
-        newSvgs[code] = svg
-        // Background: convert SVG to PNG and cache for fullscreen (tablet only)
-        cacheSvgLater(code, svg, isDark)
+        if (cancelled) return
+        setMermaidSvgs(prev => (prev[code] ? prev : { ...prev, [code]: svg }))
+        // SVG→PNG 缓存(平板全屏用)延到空闲,避免与滚动争主线程
+        idle(() => { if (!cancelled) cacheSvgLater(code, svg, isDark) }, 2000)
       } catch {
-        newSvgs[code] = ''
+        if (!cancelled) setMermaidSvgs(prev => (code in prev ? prev : { ...prev, [code]: '' }))
       }
     }
 
-    // 批量缓存到 React state —— 触发重渲染后 React 通过 dangerouslySetInnerHTML 写入 SVG
-    if (Object.keys(newSvgs).length > 0) {
-      setMermaidSvgs(prev => ({ ...prev, ...newSvgs }))
+    // 逐个渲染:一个渲染完再排下一个,每个在空闲时段跑,给滚动/绘制留出主线程
+    const pump = () => {
+      if (running || cancelled) return
+      const next = queue.shift()
+      if (!next) return
+      running = true
+      idle(async () => {
+        await renderOne(next)
+        running = false
+        if (!cancelled) pump()
+      })
     }
-  }, [])
 
-  // Clear mermaid cache when theme changes → re-render with correct colors
-  useEffect(() => { setMermaidSvgs({}); setRenderKey(k => k + 1) }, [isDark])
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          io.unobserve(e.target)
+          queue.push(e.target as HTMLElement)
+        }
+      }
+      pump()
+    }, { rootMargin: '800px 0px' })
 
-  useEffect(() => {
-    Prism.highlightAll()
-    const timer = setTimeout(renderMermaidDiagrams, 150) // slight delay for mermaid.initialize
-    return () => clearTimeout(timer)
-  }, [content, renderKey, renderMermaidDiagrams])
+    blocks.forEach(b => io.observe(b))
+    return () => { cancelled = true; io.disconnect() }
+  }, [renderKey, isDark, cacheSvgLater])
 
   useEffect(() => {
     setRenderKey(prev => prev + 1)

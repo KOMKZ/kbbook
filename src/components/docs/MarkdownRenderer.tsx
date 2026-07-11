@@ -371,23 +371,42 @@ const MarkdownRenderer = ({ content, scale = 1 }: MarkdownRendererProps) => {
               )
             }
 
-            // 内部文档链接: 归一化为 SPA 路由 /docs/{series}/{path}[#anchor],剥掉 .md。
-            // 用 React Router 的 Link 做客户端跳转 —— 避免 MUI Link href 触发整页原生导航,
-            // 也避免 .md 被 dev server 当 text/markdown 直接下载。
-            // series 从当前路由 /docs/{series}/... 取,而不是臆造 v0.1.0。
-            const seriesMatch = window.location.pathname.match(/^\/docs\/([^/]+)/)
-            const seriesId = seriesMatch ? seriesMatch[1] : 'llm'
-            let to = href
+            // 文章间 .md 链接: 归一化为 SPA 路由,用 React Router 客户端跳转。
+            // 避免 MUI Link href 触发整页原生导航,也避免 .md 被 dev server 当
+            // text/markdown 直接下载。路由规范见 DocsSidebar / resolveSlugFromParams:
+            //   /docs/{series}/{slug}   (slug 可为多级 group/slug)
             const mdMatch = href.match(/^(.*?)\.md(#.+)?$/)
             if (mdMatch) {
-              const cleanPath = mdMatch[1].replace(/^\.\.?\//, '')
-              to = `/docs/${seriesId}/${cleanPath}${mdMatch[2] ?? ''}`
-            } else if (!href.startsWith('/')) {
-              // 相对的非 .md 链接: 仍交给 Router,杜绝原生导航
-              to = `/docs/${seriesId}/${href.replace(/^\.\.?\//, '')}`
+              const anchor = mdMatch[2] ?? ''
+              const raw = mdMatch[1]
+              let to: string
+              if (raw.startsWith('/')) {
+                // 已是绝对站内路径,仅剥掉 .md
+                to = `${raw}${anchor}`
+              } else {
+                const rest = raw.replace(/^(?:\.\.?\/)+/, '') // 去掉开头的 ./ 或 ../(可能多层)
+                const segs = rest.split('/')
+                const curMatch = window.location.pathname.match(/^\/docs\/([^/]+)/)
+                const curSeries = curMatch ? curMatch[1] : 'llm'
+                if (segs.length > 1 && /-v[\d.]+$/.test(segs[0])) {
+                  // 跨系列链接: {series}-{version}/slug… → /docs/{series}/{slug…}
+                  const targetSeries = segs[0].replace(/-v[\d.]+$/, '')
+                  to = `/docs/${targetSeries}/${segs.slice(1).join('/')}${anchor}`
+                } else {
+                  // 同系列(平铺文件名,或 group/slug 嵌套)
+                  to = `/docs/${curSeries}/${rest}${anchor}`
+                }
+              }
+              return (
+                <Link component={RouterLink} to={to} sx={linkSx}>
+                  {children}
+                </Link>
+              )
             }
+
+            // 其它内部链接(非 .md,如 demo 源码 ../demos/x/main.go): 保持原生 <a>,行为不变
             return (
-              <Link component={RouterLink} to={to} sx={linkSx}>
+              <Link href={href} sx={linkSx}>
                 {children}
               </Link>
             )

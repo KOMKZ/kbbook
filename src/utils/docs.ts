@@ -12,7 +12,9 @@ import { defaultLanguage, type LanguageCode } from '../i18n'
 
 // === Doc loader configuration (set by DocModeContext) ===
 
-let _docBaseUrl = 'http://192.168.3.213:3004'  // Default to LAN dev server for network mode
+let _docBaseUrl = '' // same-origin by default; DocModeContext.configureDocLoader() 会按 本地/网络 模式覆盖。
+                     // 不要写死 LAN IP —— 冷启动时 series.json/versions.json 会在 configureDocLoader 前抢跑,
+                     // 写死的地址在浏览器里必超时(ERR_CONNECTION_TIMED_OUT)导致首页 0 系列。
 let _readLocalDoc: ((path: string) => Promise<string>) | null = null
 
 /**

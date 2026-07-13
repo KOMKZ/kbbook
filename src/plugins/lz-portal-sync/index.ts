@@ -88,7 +88,12 @@ export const readLocalDoc = async (path: string): Promise<ReadLocalDocResult> =>
   if (isNative()) {
     return LZPortalSync.readLocalDoc({ path })
   }
-  const resp = await fetch(`/docs/${path}.md`)
+  // Web fallback: only append .md if the filename doesn't already have an extension
+  // (mirrors the Java plugin's basename check — avoids double extension like series.json.md)
+  const lastSlash = path.lastIndexOf('/')
+  const baseName = lastSlash >= 0 ? path.substring(lastSlash + 1) : path
+  const fetchPath = baseName.includes('.') ? path : path + '.md'
+  const resp = await fetch(`/docs/${fetchPath}`)
   if (!resp.ok) throw new Error(`Doc not found: ${path}`)
   return { content: await resp.text(), source: 'assets' }
 }

@@ -340,10 +340,10 @@ const SettingsPanel = () => {
     try {
       const { debugLog } = await import('@/utils/debug.js')
       debugLog.info('sync', '开始文档同步', { bucket: ossCfg.bucket, path: ossCfg.path, hasKey: !!ossCfg.accessKeyId })
-      await triggerSync(ossCfg)
+      const syncResult = await triggerSync(ossCfg)
       const { clearDocsCache } = await import('@/utils/docs.js')
       clearDocsCache()
-      debugLog.info('sync', '文档同步完成')
+      debugLog.info('sync', `同步完成: +${syncResult.added || 0} ~${syncResult.updated || 0} -${syncResult.deleted || 0} | ${syncResult.fileCount || 0} files | ${syncResult.skipped ? 'skipped' : 'ok'} | v${syncResult.version || '?'}`)
       debugLog.flush()
       setToast({ message: '同步完成，即将刷新页面...', severity: 'success' })
       // Force page reload to pick up new synced files (clears in-memory cache)

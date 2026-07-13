@@ -26,6 +26,7 @@ export function configureDocLoader(opts: {
   baseUrl?: string
   readLocalDoc?: ((path: string) => Promise<string>) | null
 }) {
+  const prevReadLocalDoc = _readLocalDoc
   if (opts.baseUrl !== undefined && opts.baseUrl !== _docBaseUrl) {
     _docBaseUrl = opts.baseUrl
     // Clear caches so next loadSeriesRegistry/loadDocsMeta re-fetches from new URL
@@ -33,7 +34,18 @@ export function configureDocLoader(opts: {
     versionsCache = null
     clearDocsCache()
   }
-  if (opts.readLocalDoc !== undefined) _readLocalDoc = opts.readLocalDoc
+  if (opts.readLocalDoc !== undefined) {
+    _readLocalDoc = opts.readLocalDoc
+    // When _readLocalDoc becomes available for the first time (null→function),
+    // clear caches to purge stale fetch-failure fallbacks that may have been
+    // cached before the Capacitor plugin was ready.  Fixes cold-start race
+    // where loadSeriesRegistry/loadVersions ran via fetch before configureDocLoader.
+    if (!prevReadLocalDoc && _readLocalDoc) {
+      seriesCache = null
+      versionsCache = null
+      clearDocsCache()
+    }
+  }
 }
 
 /** Get current base URL (for non-doc fetches like roadmap JSON) */
@@ -289,11 +301,13 @@ export function getDefaultVersionPath(versions: VersionInfo[]): string {
 }
 
 /**
- * 清除缓存（语言切换时使用）
+ * 清除缓存（语言切换 / 同步完成后使用）
  */
 export function clearDocsCache(): void {
   docCache.clear()
   metaCache.clear()
+  seriesCache = null
+  versionsCache = null
 }
 
 // ============================================================

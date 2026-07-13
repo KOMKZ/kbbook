@@ -4,6 +4,18 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
 
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.File;
+import java.io.FileReader;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.net.URLDecoder;
+
 import com.alibaba.sdk.android.oss.ClientException;
 import com.alibaba.sdk.android.oss.OSS;
 import com.alibaba.sdk.android.oss.OSSClient;
@@ -42,14 +54,29 @@ public class LZPortalSyncPlugin extends Plugin {
     private static final String KEY_SYNC_FILE_COUNT = "sync_file_count";
     private static final String DEFAULT_MODE = "local";
 
-    // OSS config — set your own values or use environment/asset config
+    // OSS config defaults — overridden by SharedPreferences (set via JS saveOssConfig)
     private static final String OSS_ENDPOINT = "https://oss-cn-shenzhen.aliyuncs.com";
     private static final String OSS_BUCKET = "";
     private static final String OSS_PREFIX = "";
     private static final String OSS_ACCESS_KEY_ID = "";
     private static final String OSS_ACCESS_KEY_SECRET = "";
+    private static final String PREFS_OSS_BUCKET = "oss_bucket";
+    private static final String PREFS_OSS_PREFIX = "oss_prefix";
+    private static final String PREFS_OSS_ENDPOINT = "oss_endpoint";
+    private static final String PREFS_OSS_KEY_ID = "oss_key_id";
+    private static final String PREFS_OSS_KEY_SECRET = "oss_key_secret";
+
+    private String getOssBucket() { return getPrefs().getString(PREFS_OSS_BUCKET, OSS_BUCKET); }
+    private String getOssPrefix() { return getPrefs().getString(PREFS_OSS_PREFIX, OSS_PREFIX); }
+    private String getOssEndpoint() { return getPrefs().getString(PREFS_OSS_ENDPOINT, OSS_ENDPOINT); }
+    private String getOssKeyId() { return getPrefs().getString(PREFS_OSS_KEY_ID, OSS_ACCESS_KEY_ID); }
+    private String getOssKeySecret() { return getPrefs().getString(PREFS_OSS_KEY_SECRET, OSS_ACCESS_KEY_SECRET); }
 
     private static final int SYNC_THREADS = 5;
+
+    // Debug HTTP server — serves files/debug-log.json + app state for adb reverse debugging
+    private ServerSocket debugServerSocket;
+    private Thread debugServerThread;
 
     private SharedPreferences getPrefs() {
         return getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -71,8 +98,8 @@ public class LZPortalSyncPlugin extends Plugin {
     public void readLocalDoc(PluginCall call) {
         String path = call.getString("path");
         if (path == null || path.isEmpty()) { call.reject("path required"); return; }
-        // docs.ts passes path without .md extension, stored files have .md
-        String filePath = path.endsWith(".md") ? path : path + ".md";
+        // Only append .md if path has no extension (e.g. "docs/series.json" stays, "docs/slug" → "docs/slug.md")
+        String filePath = path.contains(".") ? path : path + ".md";
         try {
             String content = readDocFromStorage(filePath);
             if (content != null) {
@@ -89,7 +116,24 @@ public class LZPortalSyncPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void saveOssConfig(PluginCall call) {
+        SharedPreferences.Editor e = getPrefs().edit();
+        if (call.hasOption("endpoint")) e.putString(PREFS_OSS_ENDPOINT, call.getString("endpoint"));
+        if (call.hasOption("bucket")) e.putString(PREFS_OSS_BUCKET, call.getString("bucket"));
+        if (call.hasOption("path")) e.putString(PREFS_OSS_PREFIX, call.getString("path"));
+        if (call.hasOption("accessKeyId")) e.putString(PREFS_OSS_KEY_ID, call.getString("accessKeyId"));
+        if (call.hasOption("accessKeySecret")) e.putString(PREFS_OSS_KEY_SECRET, call.getString("accessKeySecret"));
+        e.apply();
+        Log.i(TAG, "OSS config saved: bucket=" + getOssBucket() + " prefix=" + getOssPrefix());
+        call.resolve();
+    }
+
+    @PluginMethod
     public void syncFromOSS(PluginCall call) {
+        // Accept OSS config from JS call params (for first-time or override)
+        if (call.hasOption("bucket") && call.getString("bucket") != null && !call.getString("bucket").isEmpty()) {
+            saveOssConfig(call);
+        }
         getBridge().executeOnMainThread(() -> new Thread(() -> {
             try {
                 SyncResult r = doSync();
@@ -107,6 +151,44 @@ public class LZPortalSyncPlugin extends Plugin {
             } catch (Exception e) {
                 Log.e(TAG, "Sync failed", e);
                 getBridge().executeOnMainThread(() -> call.reject(e.getMessage()));
+            }
+        }).start());
+    }
+
+    /** Download kbdata/latest.json via native OSS SDK (bypasses WebView CORS). */
+    @PluginMethod
+    public void pullKbdata(PluginCall call) {
+        getBridge().executeOnMainThread(() -> new Thread(() -> {
+            try {
+                String bucket = getOssBucket();
+                String prefix = getOssPrefix();
+                String key = prefix + "/kbdata/latest.json";
+                if (bucket.isEmpty()) { call.reject("OSS bucket not configured"); return; }
+
+                OSSPlainTextAKSKCredentialProvider cp =
+                    new OSSPlainTextAKSKCredentialProvider(getOssKeyId(), getOssKeySecret());
+                OSS oss = new OSSClient(getContext(), getOssEndpoint(), cp);
+                GetObjectRequest req = new GetObjectRequest(bucket, key);
+                GetObjectResult res = oss.getObject(req);
+
+                java.io.InputStream is = res.getObjectContent();
+                java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = is.read(buf)) != -1) baos.write(buf, 0, n);
+                is.close();
+                String json = baos.toString("UTF-8");
+
+                JSObject r = new JSObject();
+                r.put("success", true);
+                r.put("key", key);
+                r.put("sizeBytes", json.length());
+                r.put("json", json);
+                Log.i(TAG, "pullKbdata OK: " + json.length() + " bytes from " + key);
+                call.resolve(r);
+            } catch (Exception e) {
+                Log.e(TAG, "pullKbdata failed", e);
+                call.reject(e.getMessage());
             }
         }).start());
     }
@@ -133,6 +215,39 @@ public class LZPortalSyncPlugin extends Plugin {
     }
     @PluginMethod public void setNetworkUrl(PluginCall call) {
         getPrefs().edit().putString(KEY_NETWORK_URL, call.getString("url", "http://localhost:3004")).apply(); call.resolve();
+    }
+
+    // === Debug log file ===
+
+    @PluginMethod
+    public void writeDebugLog(PluginCall call) {
+        try {
+            String json = call.getString("json");
+            if (json == null || json.isEmpty()) { call.resolve(); return; }
+            java.io.File file = new java.io.File(getContext().getFilesDir(), "debug-log.json");
+            java.io.FileWriter fw = new java.io.FileWriter(file);
+            fw.write(json);
+            fw.close();
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void readDebugLog(PluginCall call) {
+        try {
+            java.io.File file = new java.io.File(getContext().getFilesDir(), "debug-log.json");
+            if (!file.exists()) { JSObject r = new JSObject(); r.put("json", "[]"); call.resolve(r); return; }
+            java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(file));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line);
+            br.close();
+            JSObject r = new JSObject(); r.put("json", sb.toString()); call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
     }
 
     // === Web OTA ===
@@ -186,7 +301,7 @@ public class LZPortalSyncPlugin extends Plugin {
         // 3. Download webapp.zip
         emitProgress("download", 0, "Downloading web update...");
         File zipFile = new File(getContext().getCacheDir(), "webapp.zip");
-        downloadWithProgress(OSS_PREFIX + "/latest/webapp.zip", zipFile);
+        downloadWithProgress(getOssPrefix() + "/latest/webapp.zip", zipFile);
 
         // 4. Extract to ota-webapp dir
         emitProgress("extract", 80, "Extracting...");
@@ -211,10 +326,10 @@ public class LZPortalSyncPlugin extends Plugin {
 
     private String downloadVersionJson(String objectKey) {
         OSSPlainTextAKSKCredentialProvider cp =
-            new OSSPlainTextAKSKCredentialProvider(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET);
-        OSS oss = new OSSClient(getContext(), OSS_ENDPOINT, cp);
+            new OSSPlainTextAKSKCredentialProvider(getOssKeyId(), getOssKeySecret());
+        OSS oss = new OSSClient(getContext(), getOssEndpoint(), cp);
         try {
-            GetObjectRequest req = new GetObjectRequest(OSS_BUCKET, OSS_PREFIX + "/latest/" + objectKey);
+            GetObjectRequest req = new GetObjectRequest(getOssBucket(), getOssPrefix() + "/latest/" + objectKey);
             GetObjectResult res = oss.getObject(req);
             return readStreamToString(res.getObjectContent()).trim();
         } catch (Exception e) {
@@ -270,12 +385,12 @@ public class LZPortalSyncPlugin extends Plugin {
         }
 
         // 2. Load local manifest
+        //    首次同步(无本地 manifest)不再走 full-zip:latest/webapp.zip 是网页壳、不是文档,
+        //    latest/docs.zip 又长期不再生成而过期。把缺失的本地 manifest 当作空,让下面的 diff
+        //    将远端全部文件识别为 added,统一走 files/docs/ 增量下载(远端唯一保持新鲜的内容源)。
         Manifest localManifest = loadLocalManifest();
-
-        // 3. If no local manifest → first sync, use zip for speed
-        if (localManifest == null || localManifest.files.isEmpty()) {
-            Log.i(TAG, "First sync — using full zip");
-            return doFullZipSync();
+        if (localManifest == null) {
+            localManifest = new Manifest();
         }
 
         // 4. Diff
@@ -309,12 +424,8 @@ public class LZPortalSyncPlugin extends Plugin {
             return result;
         }
 
-        // 5. If >200 files changed, use zip for speed
-        if (added.size() + updated.size() > 200) {
-            Log.i(TAG, "Many changes (" + (added.size() + updated.size()) + "), using full zip");
-            return doFullZipSync();
-        }
-
+        // 5. 一律走 files/docs/ 逐文件增量下载(含首次全量),不再因变更多而回退到 zip
+        //    —— zip 分支(doFullZipSync)已废弃。首次约 989 个文件,SYNC_THREADS 并发,数分钟完成。
         Log.i(TAG, "Incremental sync: +" + added.size() + " ~" + updated.size() + " -" + deleted.size());
 
         // 6. Delete removed files
@@ -323,7 +434,6 @@ public class LZPortalSyncPlugin extends Plugin {
             File syncedDir = new File(getContext().getFilesDir(), "synced-docs");
             for (String path : deleted) {
                 new File(syncedDir, path).delete();
-                // Clean up empty parent dirs
             }
         }
 
@@ -336,14 +446,14 @@ public class LZPortalSyncPlugin extends Plugin {
         emitProgress("download", 20, "Downloading " + toDownload + " files...");
 
         ExecutorService pool = Executors.newFixedThreadPool(SYNC_THREADS);
-        List<Future<Long>> futures = new ArrayList<>();
+        List<Future<String>> futures = new ArrayList<>();
         AtomicInteger downloaded = new AtomicInteger(0);
         File syncedDir = new File(getContext().getFilesDir(), "synced-docs");
 
         for (String path : toDownloadList) {
             futures.add(pool.submit(() -> {
                 String p = path.startsWith("/") ? path.substring(1) : path;
-                String ossKey = OSS_PREFIX + "/files/docs/" + p;
+                String ossKey = getOssPrefix() + "/files/docs/" + p;
                 File destFile = new File(syncedDir, p);
                 destFile.getParentFile().mkdirs();
                 downloadSingleFile(oss, ossKey, destFile);
@@ -352,29 +462,52 @@ public class LZPortalSyncPlugin extends Plugin {
                 if (done % 5 == 0 || done == toDownload) {
                     emitProgress("download", pct, done + " / " + toDownload);
                 }
-                return destFile.length();
+                return p; // 成功:返回已落盘的规范化路径
             }));
         }
 
+        // 收集本次"确实下载成功"的文件;失败的不计入,不会写进 manifest。
+        Map<String, String> okFiles = new HashMap<>(); // path -> remoteMD5
         long totalSize = 0;
-        for (Future<Long> f : futures) {
-            try { totalSize += f.get(); } catch (Exception e) { Log.w(TAG, "Download failed", e); }
+        for (Future<String> f : futures) {
+            try {
+                String okPath = f.get();
+                if (okPath == null) continue;
+                String md5 = remoteManifest.files.get(okPath);
+                if (md5 == null) md5 = remoteManifest.files.get("/" + okPath);
+                okFiles.put(okPath, md5 != null ? md5 : "");
+                totalSize += new File(syncedDir, okPath).length();
+            } catch (Exception e) {
+                Log.w(TAG, "Download failed", e);
+            }
         }
         pool.shutdown();
 
-        // 8. Save manifest
+        // 8. Save manifest —— 只记录"确实落盘"的文件:未改动的旧文件 + 本次成功下载的文件。
+        //    失败/被中断的文件不写入,下次同步会把它们当作缺失重新下载,
+        //    杜绝"残缺 manifest 谎报已最新、缺文件永远补不上"的复发坑。
         emitProgress("save", 95, "Saving...");
-        saveLocalManifest(remoteManifest);
+        Manifest toSave = new Manifest();
+        for (Map.Entry<String, String> le : localManifest.files.entrySet()) {
+            String path = le.getKey();
+            if (!deleted.contains(path) && !toDownloadList.contains(path)) {
+                toSave.files.put(path, le.getValue()); // 未改动,仍在盘上
+            }
+        }
+        toSave.files.putAll(okFiles); // 本次新下成功的
+        toSave.fileCount = toSave.files.size();
+        toSave.version = String.valueOf(toSave.files.size());
+        saveLocalManifest(toSave);
 
         // 9. Save prefs
         String ts = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date());
         SharedPreferences p = getPrefs();
-        p.edit().putString(KEY_LAST_SYNC, ts).putString(KEY_SYNC_VERSION, remoteManifest.version)
-            .putInt(KEY_SYNC_FILE_COUNT, remoteManifest.fileCount).apply();
+        p.edit().putString(KEY_LAST_SYNC, ts).putString(KEY_SYNC_VERSION, toSave.version)
+            .putInt(KEY_SYNC_FILE_COUNT, toSave.files.size()).apply();
 
         result.skipped = false;
-        result.version = remoteManifest.version;
-        result.fileCount = remoteManifest.fileCount;
+        result.version = toSave.version;
+        result.fileCount = toSave.files.size();
         result.totalSize = totalSize;
         result.added = added.size();
         result.updated = updated.size();
@@ -385,14 +518,14 @@ public class LZPortalSyncPlugin extends Plugin {
         return result;
     }
 
-    // === Full zip sync (first sync / large changes fallback) ===
+    // === Full zip sync (fallback when manifest unavailable) ===
 
     private SyncResult doFullZipSync() throws Exception {
         SyncResult result = new SyncResult();
         emitProgress("download", 0, "Downloading full docs...");
 
-        File zipFile = new File(getContext().getCacheDir(), "docs.zip");
-        downloadWithProgress(OSS_PREFIX + "/latest/docs.zip", zipFile);
+        File zipFile = new File(getContext().getCacheDir(), "webapp.zip");
+        downloadWithProgress(getOssPrefix() + "/latest/webapp.zip", zipFile);
 
         emitProgress("extract", 90, "Extracting...");
         File syncedDir = new File(getContext().getFilesDir(), "synced-docs");
@@ -427,12 +560,12 @@ public class LZPortalSyncPlugin extends Plugin {
     // === OSS helpers ===
 
     private OSS newOSSClient() {
-        return new OSSClient(getContext(), OSS_ENDPOINT,
-            new OSSPlainTextAKSKCredentialProvider(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET));
+        return new OSSClient(getContext(), getOssEndpoint(),
+            new OSSPlainTextAKSKCredentialProvider(getOssKeyId(), getOssKeySecret()));
     }
 
     private Manifest downloadManifest(OSS oss) throws ClientException, ServiceException, IOException, JSONException {
-        GetObjectRequest req = new GetObjectRequest(OSS_BUCKET, OSS_PREFIX + "/manifest.json");
+        GetObjectRequest req = new GetObjectRequest(getOssBucket(), getOssPrefix() + "/manifest.json");
         GetObjectResult res = oss.getObject(req);
         String json = readStreamToString(res.getObjectContent());
 
@@ -447,6 +580,10 @@ public class LZPortalSyncPlugin extends Plugin {
                 m.files.put(key, files.getString(key));
             }
         }
+        // 上传端 manifest.json 只写 {files:{...}},没有 fileCount/version 字段;
+        // 用实际文件数兜底,否则同步成功后仍会回报 "0 files" / 空版本,让人误以为没生效。
+        if (m.fileCount == 0) m.fileCount = m.files.size();
+        if (m.version == null || m.version.isEmpty()) m.version = String.valueOf(m.files.size());
         return m;
     }
 
@@ -497,7 +634,7 @@ public class LZPortalSyncPlugin extends Plugin {
     }
 
     private void downloadSingleFile(OSS oss, String ossKey, File destFile) throws ClientException, ServiceException, IOException {
-        GetObjectRequest req = new GetObjectRequest(OSS_BUCKET, ossKey);
+        GetObjectRequest req = new GetObjectRequest(getOssBucket(), ossKey);
         GetObjectResult res = oss.getObject(req);
         try (InputStream is = res.getObjectContent();
              FileOutputStream fos = new FileOutputStream(destFile)) {
@@ -509,14 +646,13 @@ public class LZPortalSyncPlugin extends Plugin {
 
     private void downloadWithProgress(String ossKey, File destFile) throws ClientException, ServiceException, IOException {
         OSS oss = newOSSClient();
-        // Get size
         long total = -1;
         try {
-            total = oss.headObject(new com.alibaba.sdk.android.oss.model.HeadObjectRequest(OSS_BUCKET, ossKey))
+            total = oss.headObject(new com.alibaba.sdk.android.oss.model.HeadObjectRequest(getOssBucket(), ossKey))
                 .getMetadata().getContentLength();
         } catch (Exception ignored) {}
 
-        GetObjectRequest req = new GetObjectRequest(OSS_BUCKET, ossKey);
+        GetObjectRequest req = new GetObjectRequest(getOssBucket(), ossKey);
         GetObjectResult res = oss.getObject(req);
         try (InputStream is = res.getObjectContent();
              FileOutputStream fos = new FileOutputStream(destFile)) {
@@ -578,5 +714,137 @@ public class LZPortalSyncPlugin extends Plugin {
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024*1024) return String.format(Locale.US, "%.1f KB", bytes/1024.0);
         return String.format(Locale.US, "%.1f MB", bytes/(1024.0*1024.0));
+    }
+
+    // === Debug HTTP Server (adb reverse → curl localhost:{port}/debug) ===
+
+    @PluginMethod
+    public void startDebugServer(PluginCall call) {
+        int port = call.getInt("port", 9123);
+        if (debugServerSocket != null) {
+            JSObject r = new JSObject(); r.put("port", port); r.put("status", "already-running"); call.resolve(r); return;
+        }
+        final SharedPreferences prefs = getPrefs();
+        final File debugFile = new File(getContext().getFilesDir(), "debug-log.json");
+
+        debugServerThread = new Thread(() -> {
+            try {
+                debugServerSocket = new ServerSocket(port);
+                Log.i(TAG, "Debug server listening on port " + port);
+                while (!Thread.currentThread().isInterrupted()) {
+                    Socket client = debugServerSocket.accept();
+                    try {
+                        BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
+                        String line = in.readLine();
+                        boolean isPostReq = false;
+                        String path = "/"; String postBody = "";
+                        int contentLength = 0;
+                        if (line != null) {
+                            String[] parts = line.split(" ");
+                            if (parts.length >= 2) { path = parts[1]; isPostReq = "POST".equals(parts[0]); }
+                        }
+                        while (line != null && !line.isEmpty()) {
+                            if (line.startsWith("Content-Length:"))
+                                try { contentLength = Integer.parseInt(line.substring(15).trim()); } catch (Exception ignored) {}
+                            line = in.readLine();
+                        }
+                        if (isPostReq && contentLength > 0) {
+                            char[] buf = new char[contentLength];
+                            in.read(buf, 0, contentLength);
+                            postBody = new String(buf);
+                        }
+
+                        String body = "{}"; String contentType = "application/json; charset=utf-8";
+                        if ("/state".equals(path)) {
+                            body = "{\"mode\":\"" + prefs.getString(KEY_MODE, DEFAULT_MODE) +
+                                "\",\"url\":\"" + prefs.getString(KEY_NETWORK_URL, "") +
+                                "\",\"lastSync\":\"" + prefs.getString(KEY_LAST_SYNC, "") + "\"}";
+                        } else if ("/ping".equals(path)) {
+                            body = "{\"ok\":true}";
+                        } else if (path.startsWith("/rpc/")) {
+                            body = handleRpc(path, postBody);
+                        } else {
+                            if (debugFile.exists()) {
+                                BufferedReader fr = new BufferedReader(new FileReader(debugFile));
+                                StringBuilder sb = new StringBuilder(); String l;
+                                while ((l = fr.readLine()) != null) sb.append(l);
+                                fr.close(); body = sb.toString();
+                            } else {
+                                body = "[]";
+                            }
+                        }
+
+                        byte[] resp = body.getBytes("UTF-8");
+                        String header = "HTTP/1.1 200 OK\r\nContent-Type: " + contentType +
+                            "\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: " + resp.length + "\r\n\r\n";
+                        OutputStream os = client.getOutputStream();
+                        os.write(header.getBytes("UTF-8")); os.write(resp); os.flush();
+                    } catch (Exception e) { Log.w(TAG, "Debug request error: " + e.getMessage()); }
+                    finally { try { client.close(); } catch (Exception ignored) {} }
+                }
+            } catch (IOException e) {
+                if (!Thread.currentThread().isInterrupted())
+                    Log.e(TAG, "Debug server error: " + e.getMessage());
+            }
+        });
+        debugServerThread.setDaemon(true);
+        debugServerThread.start();
+        JSObject r = new JSObject(); r.put("port", port); r.put("status", "started"); call.resolve(r);
+    }
+
+    @PluginMethod
+    public void stopDebugServer(PluginCall call) {
+        if (debugServerThread != null) { debugServerThread.interrupt(); debugServerThread = null; }
+        if (debugServerSocket != null) { try { debugServerSocket.close(); } catch (Exception ignored) {} debugServerSocket = null; }
+        Log.i(TAG, "Debug server stopped");
+        call.resolve();
+    }
+
+    // === RPC handler (curl -X POST .../rpc/eval -d 'code') ===
+
+    private String handleRpc(String path, String postBody) {
+        try {
+            String query = "";
+            int qi = path.indexOf('?');
+            if (qi > 0) { query = path.substring(qi + 1); path = path.substring(0, qi); }
+
+            final String code;
+            if (query.startsWith("code=")) {
+                String raw = query.substring(5).replace("+", "%2B");
+                code = URLDecoder.decode(raw, "UTF-8");
+            } else {
+                code = postBody;
+            }
+
+            if ("/rpc/ping".equals(path)) {
+                return "{\"rpc\":true}";
+            }
+
+            if ("/rpc/reload".equals(path)) {
+                getBridge().executeOnMainThread(() -> getBridge().getWebView().reload());
+                return "{\"reload\":true}";
+            }
+
+            if ("/rpc/eval".equals(path)) {
+                if (code.isEmpty()) return "{\"error\":\"missing code\"}";
+
+                final CountDownLatch latch = new CountDownLatch(1);
+                final String[] result = {""};
+                getBridge().executeOnMainThread(() -> {
+                    getBridge().getWebView().evaluateJavascript(code, val -> {
+                        result[0] = val != null ? val : "null";
+                        latch.countDown();
+                    });
+                });
+                if (latch.await(10, TimeUnit.SECONDS)) {
+                    return "{\"result\":" + result[0] + "}";
+                }
+                return "{\"error\":\"timeout\"}";
+            }
+
+            return "{\"error\":\"unknown rpc: " + path + "\"}";
+        } catch (Exception e) {
+            return "{\"error\":\"" + e.getMessage() + "\"}";
+        }
     }
 }

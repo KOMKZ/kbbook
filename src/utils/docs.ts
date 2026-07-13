@@ -122,6 +122,18 @@ export async function loadVersions(): Promise<VersionsConfig> {
   }
 
   try {
+    // 本地模式: 通过 Capacitor 插件读取
+    if (_readLocalDoc) {
+      try {
+        const content = await _readLocalDoc('versions.json')
+        const data: VersionsConfig = JSON.parse(content)
+        versionsCache = data
+        return data
+      } catch {
+        // Fall through to fetch-based loading
+      }
+    }
+
     const response = await fetch(`${_docBaseUrl}/docs/versions.json`)
     if (!response.ok) {
       throw new Error('Failed to load versions.json')
@@ -182,6 +194,18 @@ export async function loadDocsMeta(version: string, lang?: LanguageCode): Promis
   }
 
   try {
+    // 本地模式: 通过 Capacitor 插件读取
+    if (_readLocalDoc) {
+      try {
+        const content = await _readLocalDoc(`${language}/${version}/_meta.json`)
+        const meta: DocsMetaConfig = JSON.parse(content)
+        metaCache.set(cacheKey, meta)
+        return meta
+      } catch {
+        // Fall through to fetch-based loading
+      }
+    }
+
     const response = await fetch(`${_docBaseUrl}/docs/${language}/${version}/_meta.json`)
     if (!response.ok) {
       throw new Error(`Failed to load _meta.json for ${language}/${version}`)
@@ -286,6 +310,18 @@ let seriesCache: SeriesRegistry | null = null
 export async function loadSeriesRegistry(): Promise<SeriesRegistry> {
   if (seriesCache) return seriesCache
   try {
+    // 本地模式: 通过 Capacitor 插件读取
+    if (_readLocalDoc) {
+      try {
+        const content = await _readLocalDoc('series.json')
+        const data = JSON.parse(content) as SeriesRegistry
+        seriesCache = data
+        return data
+      } catch {
+        // Fall through to fetch-based loading
+      }
+    }
+
     const response = await fetch(`${_docBaseUrl}/docs/series.json`)
     if (!response.ok) throw new Error('Failed to load series.json')
     const data = (await response.json()) as SeriesRegistry

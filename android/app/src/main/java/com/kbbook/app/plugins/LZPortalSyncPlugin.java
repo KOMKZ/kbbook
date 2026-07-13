@@ -98,8 +98,11 @@ public class LZPortalSyncPlugin extends Plugin {
     public void readLocalDoc(PluginCall call) {
         String path = call.getString("path");
         if (path == null || path.isEmpty()) { call.reject("path required"); return; }
-        // Only append .md if path has no extension (e.g. "docs/series.json" stays, "docs/slug" → "docs/slug.md")
-        String filePath = path.contains(".") ? path : path + ".md";
+        // Only append .md if the filename (last path segment) has no extension.
+        // Use last path segment to avoid false positives from directory names like "v0.1.0".
+        int lastSlash = path.lastIndexOf('/');
+        String baseName = lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
+        String filePath = baseName.contains(".") ? path : path + ".md";
         try {
             String content = readDocFromStorage(filePath);
             if (content != null) {

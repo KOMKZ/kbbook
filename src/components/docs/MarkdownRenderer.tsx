@@ -223,8 +223,8 @@ const MarkdownRenderer = ({ content, scale = 1 }: MarkdownRendererProps) => {
       ref={containerRef}
       style={{ zoom: scale, '--reader-scale': scale } as CSSProperties}
       sx={{
-        // 内容区最大宽度限制 - 提升阅读舒适度
-        maxWidth: 780,
+        // 内容区最大宽度随字体缩放等比放大——放大字体时内容铺满屏幕，不再留大段空白
+        maxWidth: `min(${Math.round(780 * scale)}px, 100%)`,
         mx: 'auto',
         // Mermaid 块样式
         '& .mermaid-block': {

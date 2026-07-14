@@ -13,7 +13,7 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import CircularProgress from '@mui/material/CircularProgress'
 
 export const FONT_SCALE_MIN = 0.8
-export const FONT_SCALE_MAX = 1.8
+export const FONT_SCALE_MAX = 3.0
 const FONT_STEP = 0.1
 
 const clamp = (v: number) => Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, Math.round(v * 10) / 10))

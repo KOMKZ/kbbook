@@ -23,6 +23,7 @@ import TableOfContents from '../../components/docs/TableOfContents'
 import PageToolbar from '../../components/docs/PageToolbar'
 import ArticleToolPanel, { FONT_SCALE_MIN, FONT_SCALE_MAX } from '../../components/docs/ArticleToolPanel'
 import FullscreenIcon from '@mui/icons-material/Fullscreen'
+import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit'
 import StopIcon from '@mui/icons-material/Stop'
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver'
@@ -542,6 +543,14 @@ const DocsPage = () => {
               onFontScaleChange={handleFontScaleChange}
               readProgress={readProgress}
             />
+            {/* Quick reset: visible only when zoomed, right next to the popover trigger */}
+            {fontScale !== 1 && (
+              <Tooltip title={`恢复默认 (${Math.round(fontScale * 100)}%)`} placement="left">
+                <IconButton size="small" onClick={() => handleFontScaleChange(1)}>
+                  <RestartAltIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
             {/* TTS */}
             <Tooltip title={speechState === 'speaking' ? '停止朗读' : '朗读文章'} placement="left">
               <span>

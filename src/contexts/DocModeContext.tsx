@@ -95,14 +95,19 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
   // 同步模式到 docs.ts 的 configureDocLoader
   useEffect(() => {
     if (state.mode === 'local') {
+      const dataCleared = localStorage.getItem('kbbook-data-cleared') === '1'
       configureDocLoader({
-        baseUrl: '',
+        // If user cleared local data, set baseUrl to an unreachable address so
+        // the fetch() fallback in content loaders also fails (APK WebView would
+        // otherwise serve assets/ content, defeating the clear).
+        baseUrl: dataCleared ? 'http://0.0.0.0:1' : '',
         readLocalDoc: async (path: string) => {
           const result = await readLocalDoc(path)
-          // If user has cleared local data, block APK asset fallback so they
-          // see "no data" instead of stale built-in content.
-          if (result.source === 'assets' && localStorage.getItem('kbbook-data-cleared') === '1') {
-            throw new Error('DATA_CLEARED: local data has been wiped, sync required')
+          // Block APK asset fallback: readDocFromStorage (synced-docs) is empty
+          // after clear, native falls back to readDocFromAssets — reject that.
+          const cleared = localStorage.getItem('kbbook-data-cleared') === '1'
+          if (result.source === 'assets' && cleared) {
+            throw new Error('DATA_CLEARED')
           }
           return result.content
         },

@@ -12,9 +12,13 @@ import { defaultLanguage, type LanguageCode } from '../i18n'
 
 // === Doc loader configuration (set by DocModeContext) ===
 
-let _docBaseUrl = '' // same-origin by default; DocModeContext.configureDocLoader() 会按 本地/网络 模式覆盖。
-                     // 不要写死 LAN IP —— 冷启动时 series.json/versions.json 会在 configureDocLoader 前抢跑,
-                     // 写死的地址在浏览器里必超时(ERR_CONNECTION_TIMED_OUT)导致首页 0 系列。
+// Eagerly check data-cleared flag so fetch() fallback is blocked even before
+// configureDocLoader() runs (content loaders can race ahead of useEffect).
+const DATA_CLEARED_BASE = 'http://127.0.0.1:1'
+let _docBaseUrl = (() => {
+  try { return localStorage.getItem('kbbook-data-cleared') === '1' ? DATA_CLEARED_BASE : '' }
+  catch { return '' }
+})()
 let _readLocalDoc: ((path: string) => Promise<string>) | null = null
 
 /**

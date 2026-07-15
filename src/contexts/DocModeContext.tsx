@@ -99,6 +99,11 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
         baseUrl: '',
         readLocalDoc: async (path: string) => {
           const result = await readLocalDoc(path)
+          // If user has cleared local data, block APK asset fallback so they
+          // see "no data" instead of stale built-in content.
+          if (result.source === 'assets' && localStorage.getItem('kbbook-data-cleared') === '1') {
+            throw new Error('DATA_CLEARED: local data has been wiped, sync required')
+          }
           return result.content
         },
       })
@@ -125,6 +130,8 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, syncing: true }))
     try {
       const result = await syncFromOSS(ossCfg)
+      // Sync succeeded — clear the "data cleared" flag so asset fallback works again
+      try { localStorage.removeItem('kbbook-data-cleared') } catch {}
       const status = await getSyncStatus()
       setState((s) => ({ ...s, syncing: false, syncStatus: status, syncResult: result }))
       return result
@@ -144,7 +151,11 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
       // 2. Call native to delete synced-docs + manifest + prefs
       await clearLocalData()
 
-      // 3. Refresh sync status (will show empty)
+      // 3. Set flag to block APK asset fallback — after reload, content loaders
+      //    will see this and refuse to serve built-in assets, showing "no data".
+      try { localStorage.setItem('kbbook-data-cleared', '1') } catch {}
+
+      // 4. Refresh sync status (will show empty)
       const status = await getSyncStatus()
       setState((s) => ({ ...s, fullResetting: false, syncStatus: status, syncResult: null }))
     } catch (e) {
@@ -163,10 +174,13 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
       // 2. Call native: wipe synced-docs + manifest + prefs, then full re-sync
       const result = await resetAndSync(ossCfg)
 
-      // 3. Clear caches again after sync (new files are now on disk)
+      // 3. Sync succeeded — clear the "data cleared" flag
+      try { localStorage.removeItem('kbbook-data-cleared') } catch {}
+
+      // 4. Clear caches again after sync (new files are now on disk)
       clearDocsCache()
 
-      // 4. Refresh sync status from native
+      // 5. Refresh sync status from native
       const status = await getSyncStatus()
       setState((s) => ({ ...s, fullResetting: false, syncStatus: status, syncResult: result }))
       return result

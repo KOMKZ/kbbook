@@ -164,9 +164,16 @@ public class LZPortalSyncPlugin extends Plugin {
      */
     @PluginMethod
     public void resetAndSync(PluginCall call) {
-        // Accept OSS config from JS call params
+        // Save OSS config from JS call params (extract directly — don't delegate to
+        // saveOssConfig(call) because that would resolve THIS PluginCall prematurely!)
         if (call.hasOption("bucket") && call.getString("bucket") != null && !call.getString("bucket").isEmpty()) {
-            saveOssConfig(call);
+            SharedPreferences.Editor e = getPrefs().edit();
+            if (call.hasOption("endpoint")) e.putString(PREFS_OSS_ENDPOINT, call.getString("endpoint"));
+            if (call.hasOption("bucket")) e.putString(PREFS_OSS_BUCKET, call.getString("bucket"));
+            if (call.hasOption("path")) e.putString(PREFS_OSS_PREFIX, call.getString("path"));
+            if (call.hasOption("accessKeyId")) e.putString(PREFS_OSS_KEY_ID, call.getString("accessKeyId"));
+            if (call.hasOption("accessKeySecret")) e.putString(PREFS_OSS_KEY_SECRET, call.getString("accessKeySecret"));
+            e.apply();
         }
         getBridge().executeOnMainThread(() -> new Thread(() -> {
             try {
@@ -214,6 +221,51 @@ public class LZPortalSyncPlugin extends Plugin {
                 });
             } catch (Exception e) {
                 Log.e(TAG, "Reset+Sync failed", e);
+                getBridge().executeOnMainThread(() -> call.reject(e.getMessage()));
+            }
+        }).start());
+    }
+
+    /**
+     * 仅清除本地数据（不触发同步）。
+     * 删除 synced-docs/、manifest、sync prefs。清除后本地回到"从未同步过"的状态。
+     */
+    @PluginMethod
+    public void clearLocalData(PluginCall call) {
+        getBridge().executeOnMainThread(() -> new Thread(() -> {
+            try {
+                emitProgress("reset", 0, "正在清除本地数据...");
+                Log.i(TAG, "clearLocalData: wiping all local data");
+
+                File syncedDir = new File(getContext().getFilesDir(), "synced-docs");
+                if (syncedDir.exists()) {
+                    deleteRecursive(syncedDir);
+                    Log.i(TAG, "clearLocalData: deleted synced-docs/");
+                }
+
+                File manifestFile = getManifestFile();
+                if (manifestFile.exists()) {
+                    manifestFile.delete();
+                    Log.i(TAG, "clearLocalData: deleted manifest");
+                }
+
+                SharedPreferences p = getPrefs();
+                p.edit()
+                    .remove(KEY_LAST_SYNC)
+                    .remove(KEY_SYNC_VERSION)
+                    .remove(KEY_SYNC_FILE_COUNT)
+                    .apply();
+                Log.i(TAG, "clearLocalData: cleared sync prefs");
+
+                emitProgress("done", 100, "本地数据已全部清除");
+
+                getBridge().executeOnMainThread(() -> {
+                    JSObject res = new JSObject();
+                    res.put("success", true);
+                    call.resolve(res);
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "clearLocalData failed", e);
                 getBridge().executeOnMainThread(() -> call.reject(e.getMessage()));
             }
         }).start());

@@ -59,6 +59,7 @@ export interface LZPortalSyncPlugin {
   readLocalDoc(options: { path: string }): Promise<ReadLocalDocResult>
   syncFromOSS(options?: { endpoint?: string; bucket?: string; path?: string; accessKeyId?: string; accessKeySecret?: string }): Promise<SyncResult>
   resetAndSync(options?: { endpoint?: string; bucket?: string; path?: string; accessKeyId?: string; accessKeySecret?: string }): Promise<SyncResult>
+  clearLocalData(): Promise<{ success: boolean }>
   getSyncStatus(): Promise<SyncStatus>
   getMode(): Promise<ModeResult>
   setMode(options: { mode: string }): Promise<void>
@@ -139,6 +140,14 @@ export const resetAndSync = async (ossCfg?: OssConfig): Promise<SyncResult> => {
   }
   // Web mode: not applicable — clear cache + reload will suffice
   return { fileCount: 0, totalSize: 0, version: 'web', skipped: true, added: 0, updated: 0, deleted: 0 }
+}
+
+/** 仅清除本地数据（不触发同步）。删除 synced-docs/、manifest、sync prefs。 */
+export const clearLocalData = async (): Promise<{ success: boolean }> => {
+  if (isNative()) {
+    return LZPortalSync.clearLocalData()
+  }
+  return { success: true }
 }
 
 export const listenSyncProgress = (

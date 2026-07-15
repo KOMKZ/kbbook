@@ -252,7 +252,7 @@ const SettingsPanel = () => {
   const [active, setActive] = useState<NavId>('general')
   const [sidebarOpen, setSidebarOpen] = useState(() => { try { return localStorage.getItem("kbbook-settings-sidebar") !== "0" } catch { return true } })
   const isNarrow = useMediaQuery('(max-width:600px)')
-  const { mode, networkUrl, syncStatus, syncing, switchMode, updateNetworkUrl, triggerSync, triggerFullReset, syncResult } = useDocMode()
+  const { mode, networkUrl, syncStatus, syncing, fullResetting, switchMode, updateNetworkUrl, triggerSync, triggerClearLocal, triggerFullReset, syncResult } = useDocMode()
   const [urlInput, setUrlInput] = useState(networkUrl)
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
@@ -312,7 +312,10 @@ const SettingsPanel = () => {
   }, [])
 
   const isLocal = mode === 'local'
-  const isSyncing = syncing || (progress != null && progress.stage !== 'done')
+  const isSyncing = syncing
+  const isFullResetting = fullResetting
+  // Shared progress bar visibility: show when either sync is in progress
+  const showProgress = (syncing || fullResetting) && progress != null && progress.stage !== 'done'
 
   // Log sync result for debugging
   useEffect(() => {
@@ -358,14 +361,40 @@ const SettingsPanel = () => {
     }
   }
 
-  const [confirmReset, setConfirmReset] = useState(false)
+  // Two independent confirm states — one per destructive button
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [confirmFullReset, setConfirmFullReset] = useState(false)
 
-  const handleFullReset = async () => {
-    if (!confirmReset) {
-      setConfirmReset(true)
+  /** 仅删除本地数据，不同步 */
+  const handleClearLocal = async () => {
+    if (!confirmClear) {
+      setConfirmClear(true)
       return
     }
-    setConfirmReset(false)
+    setConfirmClear(false)
+    setProgress(null)
+    try {
+      const { debugLog } = await import('@/utils/debug.js')
+      debugLog.info('sync', '开始清除本地数据（synced-docs + manifest + prefs + 缓存）')
+      await triggerClearLocal()
+      debugLog.info('sync', '本地数据已全部清除')
+      debugLog.flush()
+      setToast({ message: '本地数据已全部清除，可使用「立即同步」或「全量同步」重新下载', severity: 'success' })
+    } catch (e: any) {
+      const { debugLog } = await import('@/utils/debug.js')
+      debugLog.error('sync', '清除本地数据失败: ' + (e?.message || String(e)))
+      debugLog.flush()
+      setToast({ message: e?.message || '清除失败', severity: 'error' })
+    }
+  }
+
+  /** 全量同步：清除+重新下载全部 */
+  const handleFullReset = async () => {
+    if (!confirmFullReset) {
+      setConfirmFullReset(true)
+      return
+    }
+    setConfirmFullReset(false)
     setProgress(null)
     try {
       const { debugLog } = await import('@/utils/debug.js')
@@ -374,7 +403,6 @@ const SettingsPanel = () => {
       debugLog.info('sync', `全量同步完成: ${result.fileCount || 0} files | v${result.version || '?'}`)
       debugLog.flush()
       setToast({ message: `全量同步完成（${result.fileCount} 文件），即将刷新...`, severity: 'success' })
-      // Force page reload to pick up all new files
       setTimeout(() => window.location.reload(), 2000)
     } catch (e: any) {
       const { debugLog } = await import('@/utils/debug.js')
@@ -451,14 +479,14 @@ const SettingsPanel = () => {
                 </Typography>
               )}
 
-              {isSyncing && (
+              {showProgress && (
                 <Box sx={{ mb: 1.5 }}>
                   <LinearProgress variant="determinate" value={progressPercent} sx={{ mb: 0.5, height: 6, borderRadius: 3 }} />
                   <Typography variant="caption" color="text.secondary">{progress?.detail ?? '准备中...'}</Typography>
                 </Box>
               )}
 
-              {!isSyncing && syncResult && (
+              {!showProgress && syncResult && (
                 <Box sx={{ mb: 1.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <CheckCircleIcon color="success" fontSize="small" />
@@ -478,29 +506,52 @@ const SettingsPanel = () => {
               )}
 
               <Button variant="outlined" startIcon={isSyncing ? <CircularProgress size={16} /> : <CloudSyncIcon />}
-                onClick={handleSync} disabled={isSyncing} fullWidth>
+                onClick={handleSync} disabled={isSyncing || isFullResetting} fullWidth>
                 {isSyncing ? '同步中...' : '立即同步'}
               </Button>
 
-              {/* Full reset sync — wipes all local data then re-downloads */}
+              {/* Destructive actions — separated from normal sync, each with independent confirm */}
               <Box sx={{ mt: 1.5, pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  全量同步会<strong>删除所有本地文档和缓存</strong>，从 OSS 重新下载全部文件。
-                  适用于：本地数据损坏、同步后内容不更新、mermaid 图片异常等疑难问题。
+                  以下操作会<strong>删除所有本地文档和缓存</strong>。适用于：本地数据损坏、同步后内容不更新等疑难问题。
                 </Typography>
+
+                {/* Button 1: Clear local data only */}
                 <Button
                   variant="outlined"
                   color="warning"
-                  startIcon={isSyncing ? <CircularProgress size={16} color="warning" /> : <SyncProblemIcon />}
+                  startIcon={isFullResetting && !confirmFullReset ? <CircularProgress size={16} color="warning" /> : <SyncProblemIcon />}
+                  onClick={handleClearLocal}
+                  disabled={isSyncing || (isFullResetting && confirmFullReset)}
+                  fullWidth
+                  sx={{ mb: 1 }}
+                >
+                  {isFullResetting && confirmClear ? '清除中...'
+                    : confirmClear ? '⚠️ 确认删除全部本地数据？'
+                    : '删除本地所有数据'}
+                </Button>
+                {confirmClear && !isFullResetting && (
+                  <Button variant="text" size="small" onClick={() => setConfirmClear(false)} fullWidth sx={{ mt: -0.5, mb: 0.5 }}>
+                    取消
+                  </Button>
+                )}
+
+                {/* Button 2: Full reset + sync */}
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  startIcon={isFullResetting && confirmFullReset ? <CircularProgress size={16} color="warning" /> : <SyncProblemIcon />}
                   onClick={handleFullReset}
-                  disabled={isSyncing}
+                  disabled={isSyncing || (isFullResetting && confirmClear)}
                   fullWidth
                   sx={{ borderColor: 'warning.main', '&:hover': { borderColor: 'warning.dark', bgcolor: 'warning.50' } }}
                 >
-                  {isSyncing ? '全量同步中...' : confirmReset ? '⚠️ 确认删除全部本地数据并重新下载？' : '全量同步（清空后重下）'}
+                  {isFullResetting && confirmFullReset ? '全量同步中...'
+                    : confirmFullReset ? '⚠️ 确认删除并重新下载全部？'
+                    : '全量同步（清空后重下）'}
                 </Button>
-                {confirmReset && !isSyncing && (
-                  <Button variant="text" size="small" onClick={() => setConfirmReset(false)} fullWidth sx={{ mt: 0.5 }}>
+                {confirmFullReset && !isFullResetting && (
+                  <Button variant="text" size="small" onClick={() => setConfirmFullReset(false)} fullWidth sx={{ mt: 0.5 }}>
                     取消
                   </Button>
                 )}

@@ -13,6 +13,7 @@ import {
   getSyncStatus,
   syncFromOSS,
   resetAndSync,
+  clearLocalData,
   readLocalDoc,
   type SyncStatus,
   type SyncResult,
@@ -24,15 +25,21 @@ interface DocModeState {
   mode: 'local' | 'network'
   networkUrl: string
   syncStatus: SyncStatus
+  /** 增量同步进行中 */
   syncing: boolean
+  /** 全量同步（清空+重下）进行中 */
+  fullResetting: boolean
   syncResult: SyncResult | null
 }
 
 interface DocModeContextValue extends DocModeState {
   switchMode: (mode: 'local' | 'network') => Promise<void>
   updateNetworkUrl: (url: string) => Promise<void>
+  /** 增量同步：对比 manifest，只下载变更文件 */
   triggerSync: (ossCfg?: OssConfig) => Promise<SyncResult>
-  /** 全量同步：清空本地所有数据（synced-docs + manifest + 缓存），从 OSS 全量重新下载 */
+  /** 仅清除本地数据（synced-docs + manifest + prefs + JS 缓存），不触发同步 */
+  triggerClearLocal: () => Promise<void>
+  /** 全量同步：清空本地所有数据 → 从 OSS 全量重新下载 */
   triggerFullReset: (ossCfg?: OssConfig) => Promise<SyncResult>
   /** 模式感知的文档加载: 本地=插件读, 网络=fetch */
   loadDoc: (path: string) => Promise<string>
@@ -44,12 +51,27 @@ const DocModeContext = createContext<DocModeContextValue | null>(null)
 declare const __NETWORK_URL__: string
 const DEFAULT_NETWORK_URL = (typeof __NETWORK_URL__ !== 'undefined' && __NETWORK_URL__) || 'http://localhost:3004'
 
+/** Clear all JS-side caches (docs, meta, series, versions, mermaid). */
+async function clearAllJsCaches() {
+  clearDocsCache()
+  try {
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase('kbbook-mermaid-cache')
+      req.onsuccess = () => resolve()
+      req.onerror = () => resolve() // non-fatal
+      req.onblocked = () => { setTimeout(() => resolve(), 500) }
+    })
+  } catch {}
+  try { localStorage.removeItem('kbbook-sync-in-progress') } catch {}
+}
+
 export function DocModeProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DocModeState>({
     mode: 'local',
     networkUrl: DEFAULT_NETWORK_URL,
     syncStatus: { lastSyncTime: null, syncVersion: null, fileCount: 0, docsAvailable: false },
     syncing: false,
+    fullResetting: false,
     syncResult: null,
   })
 
@@ -98,6 +120,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, networkUrl: url }))
   }, [])
 
+  /** 增量同步 */
   const triggerSync = useCallback(async (ossCfg?: OssConfig): Promise<SyncResult> => {
     setState((s) => ({ ...s, syncing: true }))
     try {
@@ -111,45 +134,44 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  /** 仅清除本地数据（不清除 JS 缓存，不触发同步） */
+  const triggerClearLocal = useCallback(async () => {
+    setState((s) => ({ ...s, fullResetting: true }))
+    try {
+      // 1. Clear JS-side caches
+      await clearAllJsCaches()
+
+      // 2. Call native to delete synced-docs + manifest + prefs
+      await clearLocalData()
+
+      // 3. Refresh sync status (will show empty)
+      const status = await getSyncStatus()
+      setState((s) => ({ ...s, fullResetting: false, syncStatus: status, syncResult: null }))
+    } catch (e) {
+      setState((s) => ({ ...s, fullResetting: false }))
+      throw e
+    }
+  }, [])
+
+  /** 全量同步：清除+重新下载 */
   const triggerFullReset = useCallback(async (ossCfg?: OssConfig): Promise<SyncResult> => {
-    setState((s) => ({ ...s, syncing: true }))
+    setState((s) => ({ ...s, fullResetting: true }))
     try {
       // 1. Clear all JS-side caches first
-      clearDocsCache()
+      await clearAllJsCaches()
 
-      // 2. Delete IndexedDB mermaid cache
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const req = indexedDB.deleteDatabase('kbbook-mermaid-cache')
-          req.onsuccess = () => resolve()
-          req.onerror = () => reject(req.error)
-          req.onblocked = () => {
-            // If blocked, try again after the blocking connection closes
-            setTimeout(() => resolve(), 500)
-          }
-        })
-      } catch (e) {
-        // Non-fatal — mermaid cache will repopulate
-        console.warn('Failed to clear mermaid cache:', e)
-      }
-
-      // 3. Clear localStorage sync-related flags that could interfere
-      try {
-        localStorage.removeItem('kbbook-sync-in-progress')
-      } catch {}
-
-      // 4. Call native reset + full sync (wipes synced-docs + manifest + prefs, then re-syncs)
+      // 2. Call native: wipe synced-docs + manifest + prefs, then full re-sync
       const result = await resetAndSync(ossCfg)
 
-      // 5. Clear caches again after sync (new files are now on disk)
+      // 3. Clear caches again after sync (new files are now on disk)
       clearDocsCache()
 
-      // 6. Refresh sync status from native
+      // 4. Refresh sync status from native
       const status = await getSyncStatus()
-      setState((s) => ({ ...s, syncing: false, syncStatus: status, syncResult: result }))
+      setState((s) => ({ ...s, fullResetting: false, syncStatus: status, syncResult: result }))
       return result
     } catch (e) {
-      setState((s) => ({ ...s, syncing: false, syncResult: null }))
+      setState((s) => ({ ...s, fullResetting: false, syncResult: null }))
       throw e
     }
   }, [])
@@ -179,7 +201,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
 
   return (
     <DocModeContext.Provider
-      value={{ ...state, switchMode, updateNetworkUrl, triggerSync, triggerFullReset, loadDoc, loadJson }}
+      value={{ ...state, switchMode, updateNetworkUrl, triggerSync, triggerClearLocal, triggerFullReset, loadDoc, loadJson }}
     >
       {children}
     </DocModeContext.Provider>

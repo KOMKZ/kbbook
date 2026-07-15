@@ -18,6 +18,7 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import ReadingHistoryDialog from './ReadingHistoryDialog'
 import { useReadingHistory } from '../../hooks/useReadingHistory'
 import { useToolbarSizeCtx } from '../../contexts/ToolbarSizeContext'
+import ThemeSwitcher from '../common/ThemeSwitcher'
 // preferences via localStorage
 
 
@@ -146,6 +147,8 @@ const PageToolbar = ({ extraButtons, seriesId, columns = 1 }: Props) => {
             <Tooltip title="阅读历史" placement="left">
               <IconButton size="small" onClick={() => setHistoryOpen(true)}><HistoryIcon fontSize="small" /></IconButton>
             </Tooltip>
+
+            <ThemeSwitcher />
 
             {/* Extra buttons (article-specific) */}
             {extraButtons}

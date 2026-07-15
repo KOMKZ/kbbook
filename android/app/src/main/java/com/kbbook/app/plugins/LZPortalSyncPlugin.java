@@ -133,9 +133,16 @@ public class LZPortalSyncPlugin extends Plugin {
 
     @PluginMethod
     public void syncFromOSS(PluginCall call) {
-        // Accept OSS config from JS call params (for first-time or override)
+        // Save OSS config from JS call params (extract directly — don't delegate to
+        // saveOssConfig(call) which would resolve THIS PluginCall prematurely!)
         if (call.hasOption("bucket") && call.getString("bucket") != null && !call.getString("bucket").isEmpty()) {
-            saveOssConfig(call);
+            SharedPreferences.Editor e = getPrefs().edit();
+            if (call.hasOption("endpoint")) e.putString(PREFS_OSS_ENDPOINT, call.getString("endpoint"));
+            if (call.hasOption("bucket")) e.putString(PREFS_OSS_BUCKET, call.getString("bucket"));
+            if (call.hasOption("path")) e.putString(PREFS_OSS_PREFIX, call.getString("path"));
+            if (call.hasOption("accessKeyId")) e.putString(PREFS_OSS_KEY_ID, call.getString("accessKeyId"));
+            if (call.hasOption("accessKeySecret")) e.putString(PREFS_OSS_KEY_SECRET, call.getString("accessKeySecret"));
+            e.apply();
         }
         getBridge().executeOnMainThread(() -> new Thread(() -> {
             try {

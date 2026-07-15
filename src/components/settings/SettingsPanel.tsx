@@ -252,7 +252,7 @@ const SettingsPanel = () => {
   const [active, setActive] = useState<NavId>('general')
   const [sidebarOpen, setSidebarOpen] = useState(() => { try { return localStorage.getItem("kbbook-settings-sidebar") !== "0" } catch { return true } })
   const isNarrow = useMediaQuery('(max-width:600px)')
-  const { mode, networkUrl, syncStatus, syncing, fullResetting, switchMode, updateNetworkUrl, triggerSync, triggerClearLocal, triggerFullReset, syncResult } = useDocMode()
+  const { mode, networkUrl, syncStatus, syncing, clearing, fullResetting, switchMode, updateNetworkUrl, triggerSync, triggerClearLocal, triggerFullReset, syncResult } = useDocMode()
   const [urlInput, setUrlInput] = useState(networkUrl)
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
@@ -313,9 +313,10 @@ const SettingsPanel = () => {
 
   const isLocal = mode === 'local'
   const isSyncing = syncing
+  const isClearing = clearing
   const isFullResetting = fullResetting
-  // Shared progress bar visibility: show when either sync is in progress
-  const showProgress = (syncing || fullResetting) && progress != null && progress.stage !== 'done'
+  // Shared progress bar visibility
+  const showProgress = (syncing || clearing || fullResetting) && progress != null && progress.stage !== 'done'
 
   // Log sync result for debugging
   useEffect(() => {
@@ -518,37 +519,37 @@ const SettingsPanel = () => {
                   以下操作会<strong>删除所有本地文档和缓存</strong>。适用于：本地数据损坏、同步后内容不更新等疑难问题。
                 </Typography>
 
-                {/* Button 1: Clear local data only */}
+                {/* Button 1: Clear local data only — uses `clearing` state */}
                 <Button
                   variant="outlined"
                   color="warning"
-                  startIcon={isFullResetting && !confirmFullReset ? <CircularProgress size={16} color="warning" /> : <SyncProblemIcon />}
+                  startIcon={isClearing ? <CircularProgress size={16} color="warning" /> : <SyncProblemIcon />}
                   onClick={handleClearLocal}
-                  disabled={isSyncing || (isFullResetting && confirmFullReset)}
+                  disabled={isSyncing || isFullResetting}
                   fullWidth
                   sx={{ mb: 1 }}
                 >
-                  {isFullResetting && confirmClear ? '清除中...'
+                  {isClearing ? '清除中...'
                     : confirmClear ? '⚠️ 确认删除全部本地数据？'
                     : '删除本地所有数据'}
                 </Button>
-                {confirmClear && !isFullResetting && (
+                {confirmClear && !isClearing && (
                   <Button variant="text" size="small" onClick={() => setConfirmClear(false)} fullWidth sx={{ mt: -0.5, mb: 0.5 }}>
                     取消
                   </Button>
                 )}
 
-                {/* Button 2: Full reset + sync */}
+                {/* Button 2: Full reset + sync — uses `fullResetting` state */}
                 <Button
                   variant="outlined"
                   color="warning"
-                  startIcon={isFullResetting && confirmFullReset ? <CircularProgress size={16} color="warning" /> : <SyncProblemIcon />}
+                  startIcon={isFullResetting ? <CircularProgress size={16} color="warning" /> : <SyncProblemIcon />}
                   onClick={handleFullReset}
-                  disabled={isSyncing || (isFullResetting && confirmClear)}
+                  disabled={isSyncing || isClearing}
                   fullWidth
                   sx={{ borderColor: 'warning.main', '&:hover': { borderColor: 'warning.dark', bgcolor: 'warning.50' } }}
                 >
-                  {isFullResetting && confirmFullReset ? '全量同步中...'
+                  {isFullResetting ? '全量同步中...'
                     : confirmFullReset ? '⚠️ 确认删除并重新下载全部？'
                     : '全量同步（清空后重下）'}
                 </Button>

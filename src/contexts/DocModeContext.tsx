@@ -27,7 +27,9 @@ interface DocModeState {
   syncStatus: SyncStatus
   /** 增量同步进行中 */
   syncing: boolean
-  /** 全量同步（清空+重下）进行中 */
+  /** "删除本地所有数据" 进行中 */
+  clearing: boolean
+  /** "全量同步（清空+重下）" 进行中 */
   fullResetting: boolean
   syncResult: SyncResult | null
 }
@@ -71,6 +73,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
     networkUrl: DEFAULT_NETWORK_URL,
     syncStatus: { lastSyncTime: null, syncVersion: null, fileCount: 0, docsAvailable: false },
     syncing: false,
+    clearing: false,
     fullResetting: false,
     syncResult: null,
   })
@@ -148,7 +151,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
 
   /** 仅清除本地数据（不清除 JS 缓存，不触发同步） */
   const triggerClearLocal = useCallback(async () => {
-    setState((s) => ({ ...s, fullResetting: true }))
+    setState((s) => ({ ...s, clearing: true }))
     try {
       // 1. Clear JS-side caches
       await clearAllJsCaches()
@@ -162,9 +165,9 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
 
       // 4. Refresh sync status (will show empty)
       const status = await getSyncStatus()
-      setState((s) => ({ ...s, fullResetting: false, syncStatus: status, syncResult: null }))
+      setState((s) => ({ ...s, clearing: false, syncStatus: status, syncResult: null }))
     } catch (e) {
-      setState((s) => ({ ...s, fullResetting: false }))
+      setState((s) => ({ ...s, clearing: false }))
       throw e
     }
   }, [])

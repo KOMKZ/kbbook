@@ -158,6 +158,67 @@ public class LZPortalSyncPlugin extends Plugin {
         }).start());
     }
 
+    /**
+     * 全量同步：先删除所有本地数据（synced-docs、manifest、sync prefs），再执行全量同步。
+     * 相当于"恢复出厂同步设置"——本地不留任何旧文件，全部从 OSS 重新下载。
+     */
+    @PluginMethod
+    public void resetAndSync(PluginCall call) {
+        // Accept OSS config from JS call params
+        if (call.hasOption("bucket") && call.getString("bucket") != null && !call.getString("bucket").isEmpty()) {
+            saveOssConfig(call);
+        }
+        getBridge().executeOnMainThread(() -> new Thread(() -> {
+            try {
+                emitProgress("reset", 0, "正在清除本地数据...");
+                Log.i(TAG, "resetAndSync: wiping all local data");
+
+                // 1. Delete entire synced-docs directory
+                File syncedDir = new File(getContext().getFilesDir(), "synced-docs");
+                if (syncedDir.exists()) {
+                    deleteRecursive(syncedDir);
+                    Log.i(TAG, "resetAndSync: deleted synced-docs/");
+                }
+
+                // 2. Delete local manifest
+                File manifestFile = getManifestFile();
+                if (manifestFile.exists()) {
+                    manifestFile.delete();
+                    Log.i(TAG, "resetAndSync: deleted manifest");
+                }
+
+                // 3. Clear sync-related SharedPreferences
+                SharedPreferences p = getPrefs();
+                p.edit()
+                    .remove(KEY_LAST_SYNC)
+                    .remove(KEY_SYNC_VERSION)
+                    .remove(KEY_SYNC_FILE_COUNT)
+                    .apply();
+                Log.i(TAG, "resetAndSync: cleared sync prefs");
+
+                emitProgress("reset", 5, "本地数据已清除，开始全量同步...");
+
+                // 4. Run fresh sync (no local manifest → full download)
+                SyncResult r = doSync();
+
+                getBridge().executeOnMainThread(() -> {
+                    JSObject res = new JSObject();
+                    res.put("fileCount", r.fileCount);
+                    res.put("totalSize", r.totalSize);
+                    res.put("version", r.version);
+                    res.put("skipped", r.skipped);
+                    res.put("added", r.added);
+                    res.put("updated", r.updated);
+                    res.put("deleted", r.deleted);
+                    call.resolve(res);
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Reset+Sync failed", e);
+                getBridge().executeOnMainThread(() -> call.reject(e.getMessage()));
+            }
+        }).start());
+    }
+
     /** Download kbdata/latest.json via native OSS SDK (bypasses WebView CORS). */
     @PluginMethod
     public void pullKbdata(PluginCall call) {

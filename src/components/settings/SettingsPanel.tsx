@@ -41,6 +41,7 @@ import AddIcon from '@mui/icons-material/Add'
 import RemoveIcon from '@mui/icons-material/Remove'
 import SettingsIcon from '@mui/icons-material/Settings'
 import SyncIcon from '@mui/icons-material/Sync'
+import SyncProblemIcon from '@mui/icons-material/SyncProblem'
 import InfoIcon from '@mui/icons-material/Info'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
@@ -251,7 +252,7 @@ const SettingsPanel = () => {
   const [active, setActive] = useState<NavId>('general')
   const [sidebarOpen, setSidebarOpen] = useState(() => { try { return localStorage.getItem("kbbook-settings-sidebar") !== "0" } catch { return true } })
   const isNarrow = useMediaQuery('(max-width:600px)')
-  const { mode, networkUrl, syncStatus, syncing, switchMode, updateNetworkUrl, triggerSync, syncResult } = useDocMode()
+  const { mode, networkUrl, syncStatus, syncing, switchMode, updateNetworkUrl, triggerSync, triggerFullReset, syncResult } = useDocMode()
   const [urlInput, setUrlInput] = useState(networkUrl)
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
@@ -357,6 +358,33 @@ const SettingsPanel = () => {
     }
   }
 
+  const [confirmReset, setConfirmReset] = useState(false)
+
+  const handleFullReset = async () => {
+    if (!confirmReset) {
+      setConfirmReset(true)
+      return
+    }
+    setConfirmReset(false)
+    setProgress(null)
+    try {
+      const { debugLog } = await import('@/utils/debug.js')
+      debugLog.info('sync', '开始全量同步（清空本地 + 重新下载）', { bucket: ossCfg.bucket, path: ossCfg.path })
+      const result = await triggerFullReset(ossCfg)
+      debugLog.info('sync', `全量同步完成: ${result.fileCount || 0} files | v${result.version || '?'}`)
+      debugLog.flush()
+      setToast({ message: `全量同步完成（${result.fileCount} 文件），即将刷新...`, severity: 'success' })
+      // Force page reload to pick up all new files
+      setTimeout(() => window.location.reload(), 2000)
+    } catch (e: any) {
+      const { debugLog } = await import('@/utils/debug.js')
+      debugLog.error('sync', '全量同步失败: ' + (e?.message || String(e)))
+      debugLog.flush()
+      setProgress(null)
+      setToast({ message: e?.message || '全量同步失败，请检查 OSS 配置和网络连接', severity: 'error' })
+    }
+  }
+
   // ---- per-nav content ----
 
   const renderContent = () => {
@@ -453,6 +481,30 @@ const SettingsPanel = () => {
                 onClick={handleSync} disabled={isSyncing} fullWidth>
                 {isSyncing ? '同步中...' : '立即同步'}
               </Button>
+
+              {/* Full reset sync — wipes all local data then re-downloads */}
+              <Box sx={{ mt: 1.5, pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  全量同步会<strong>删除所有本地文档和缓存</strong>，从 OSS 重新下载全部文件。
+                  适用于：本地数据损坏、同步后内容不更新、mermaid 图片异常等疑难问题。
+                </Typography>
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  startIcon={isSyncing ? <CircularProgress size={16} color="warning" /> : <SyncProblemIcon />}
+                  onClick={handleFullReset}
+                  disabled={isSyncing}
+                  fullWidth
+                  sx={{ borderColor: 'warning.main', '&:hover': { borderColor: 'warning.dark', bgcolor: 'warning.50' } }}
+                >
+                  {isSyncing ? '全量同步中...' : confirmReset ? '⚠️ 确认删除全部本地数据并重新下载？' : '全量同步（清空后重下）'}
+                </Button>
+                {confirmReset && !isSyncing && (
+                  <Button variant="text" size="small" onClick={() => setConfirmReset(false)} fullWidth sx={{ mt: 0.5 }}>
+                    取消
+                  </Button>
+                )}
+              </Box>
             </Section>
 
             <DebugServerSection />

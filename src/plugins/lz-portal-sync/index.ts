@@ -58,6 +58,7 @@ export interface WebVersionResult {
 export interface LZPortalSyncPlugin {
   readLocalDoc(options: { path: string }): Promise<ReadLocalDocResult>
   syncFromOSS(options?: { endpoint?: string; bucket?: string; path?: string; accessKeyId?: string; accessKeySecret?: string }): Promise<SyncResult>
+  resetAndSync(options?: { endpoint?: string; bucket?: string; path?: string; accessKeyId?: string; accessKeySecret?: string }): Promise<SyncResult>
   getSyncStatus(): Promise<SyncStatus>
   getMode(): Promise<ModeResult>
   setMode(options: { mode: string }): Promise<void>
@@ -125,6 +126,18 @@ export const syncFromOSS = async (ossCfg?: OssConfig): Promise<SyncResult> => {
       throw new Error(`OSS 连接失败: ${e.message}. 请检查 OSS 配置 (Endpoint/Bucket/Key)`)
     }
   }
+  return { fileCount: 0, totalSize: 0, version: 'web', skipped: true, added: 0, updated: 0, deleted: 0 }
+}
+
+/** 全量同步：先清空本地所有数据，再从 OSS 全量重新下载。仅在 Native 环境生效。 */
+export const resetAndSync = async (ossCfg?: OssConfig): Promise<SyncResult> => {
+  if (isNative()) {
+    if (ossCfg?.accessKeyId) {
+      return LZPortalSync.resetAndSync(ossCfg)
+    }
+    return LZPortalSync.resetAndSync()
+  }
+  // Web mode: not applicable — clear cache + reload will suffice
   return { fileCount: 0, totalSize: 0, version: 'web', skipped: true, added: 0, updated: 0, deleted: 0 }
 }
 

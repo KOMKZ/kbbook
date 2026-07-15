@@ -7,7 +7,7 @@ import Link from '@mui/material/Link'
 
 /**
  * 页内目录 (Table of Contents)
- * 
+ *
  * 设计要点：
  * - Sticky 固定在右侧
  * - 自动从 H2/H3 提取
@@ -33,17 +33,29 @@ const TableOfContents = ({ content }: TableOfContentsProps) => {
 
   // 从 Markdown 内容提取标题
   useEffect(() => {
+    // 先移除围栏代码块，避免代码块内的 "###" 行被误识别为标题
+    // （例如 binlog 格式示例中的 "### INSERT INTO ..."）
+    const contentWithoutCodeBlocks = content.replace(/```[\s\S]*?```/g, '')
     const headingRegex = /^(#{2,3})\s+(.+)$/gm
     const items: TocItem[] = []
+    const seen = new Set<string>()
     let match
 
-    while ((match = headingRegex.exec(content)) !== null) {
+    while ((match = headingRegex.exec(contentWithoutCodeBlocks)) !== null) {
       const level = match[1].length
       const text = match[2]
-      const id = text
+      let id = text
         .toLowerCase()
-        .replace(/[^\w\u4e00-\u9fa5]+/g, '-')
+        .replace(/[^\w一-龥]+/g, '-')
         .replace(/^-|-$/g, '')
+
+      // 去重：相同 id 的标题追加数字后缀
+      if (seen.has(id)) {
+        let counter = 2
+        while (seen.has(`${id}-${counter}`)) counter++
+        id = `${id}-${counter}`
+      }
+      seen.add(id)
 
       items.push({ id, text, level })
     }

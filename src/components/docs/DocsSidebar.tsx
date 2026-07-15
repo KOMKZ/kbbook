@@ -180,56 +180,73 @@ const DocsSidebar = ({ versions, currentVersion, docs, seriesId }: DocsSidebarPr
             </IconButton>
           </Tooltip>
         </Box>
-        <FormControl fullWidth size="small">
-          <Select
-            value={currentVersion}
-            onChange={handleVersionChange}
-            sx={{
-              bgcolor:
-                theme.palette.mode === 'dark'
-                  ? 'rgba(255, 255, 255, 0.05)'
-                  : 'grey.50',
-              '& .MuiSelect-select': {
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-              },
-            }}
-            renderValue={() => (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="body2" fontWeight={500}>
-                  {currentVersionInfo?.label || currentVersion}
-                </Typography>
-                {currentVersionInfo?.isLatest && (
-                  <Chip
-                    label="Latest"
-                    size="small"
-                    color="primary"
-                    sx={{ height: 18, fontSize: '0.65rem', fontWeight: 600 }}
-                  />
-                )}
-              </Box>
+        {seriesId ? (
+          // 多系列模式：版本由系列配置决定，仅做展示
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+            <Typography variant="body2" fontWeight={500}>
+              {currentVersionInfo?.label || currentVersion}
+            </Typography>
+            {currentVersionInfo?.isLatest && (
+              <Chip
+                label="Latest"
+                size="small"
+                color="primary"
+                sx={{ height: 18, fontSize: '0.65rem', fontWeight: 600 }}
+              />
             )}
-          >
-            {versions.map((v) => (
-              <MenuItem
-                key={v.version}
-                value={v.path}
-                sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
-              >
-                <Typography variant="body2">{v.label}</Typography>
-                {v.isLatest && (
-                  <Chip
-                    label="Latest"
-                    size="small"
-                    color="primary"
-                    sx={{ height: 18, fontSize: '0.65rem' }}
-                  />
-                )}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+          </Box>
+        ) : (
+          <FormControl fullWidth size="small">
+            <Select
+              value={currentVersion}
+              onChange={handleVersionChange}
+              sx={{
+                bgcolor:
+                  theme.palette.mode === 'dark'
+                    ? 'rgba(255, 255, 255, 0.05)'
+                    : 'grey.50',
+                '& .MuiSelect-select': {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                },
+              }}
+              renderValue={() => (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" fontWeight={500}>
+                    {currentVersionInfo?.label || currentVersion}
+                  </Typography>
+                  {currentVersionInfo?.isLatest && (
+                    <Chip
+                      label="Latest"
+                      size="small"
+                      color="primary"
+                      sx={{ height: 18, fontSize: '0.65rem', fontWeight: 600 }}
+                    />
+                  )}
+                </Box>
+              )}
+            >
+              {versions.map((v) => (
+                <MenuItem
+                  key={v.version}
+                  value={v.path}
+                  sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                >
+                  <Typography variant="body2">{v.label}</Typography>
+                  {v.isLatest && (
+                    <Chip
+                      label="Latest"
+                      size="small"
+                      color="primary"
+                      sx={{ height: 18, fontSize: '0.65rem' }}
+                    />
+                  )}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
       </Box>
 
       {/* 文档导航区域 */}

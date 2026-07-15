@@ -379,7 +379,9 @@ const SettingsPanel = () => {
       await triggerClearLocal()
       debugLog.info('sync', '本地数据已全部清除')
       debugLog.flush()
-      setToast({ message: '本地数据已全部清除，可使用「立即同步」或「全量同步」重新下载', severity: 'success' })
+      setToast({ message: '本地数据已全部清除，即将刷新页面...', severity: 'success' })
+      // Force reload: clears all React state + in-memory caches, sync status will show empty
+      setTimeout(() => window.location.reload(), 1500)
     } catch (e: any) {
       const { debugLog } = await import('@/utils/debug.js')
       debugLog.error('sync', '清除本地数据失败: ' + (e?.message || String(e)))

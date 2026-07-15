@@ -16,8 +16,8 @@ import CloseIcon from '@mui/icons-material/Close'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import { useTheme } from '@mui/material/styles'
 
-/** 超过此列数自动启用宽表模式 */
-const WIDE_COLUMN_THRESHOLD = 6
+/** 超过此列数自动启用宽表模式。设极大值=默认关闭，需要时改为 6 即可启用 */
+const WIDE_COLUMN_THRESHOLD = 999
 
 const FONT_MIN = 0.5
 const FONT_MAX = 2.0

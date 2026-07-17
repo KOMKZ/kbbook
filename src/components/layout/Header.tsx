@@ -20,6 +20,7 @@ import GitHubIcon from '@mui/icons-material/GitHub'
 import ThemeSwitcher from '../common/ThemeSwitcher'
 import SearchDialog from '../docs/SearchDialog'
 import { loadSeriesRegistry } from '../../utils/docs'
+import { useDocMode } from '../../contexts/DocModeContext'
 import { siteConfig } from '../../config/site'
 import type { Series } from '../../types/series'
 
@@ -34,6 +35,7 @@ const Header = () => {
   const theme = useTheme()
   const navigate = useNavigate()
   const { series: currentSeriesId } = useParams<{ series?: string }>()
+  const { dataVersion } = useDocMode()
   const [seriesList, setSeriesList] = useState<Series[]>([])
   const [defaultSeriesId, setDefaultSeriesId] = useState<string>('llm')
   const [anchor, setAnchor] = useState<null | HTMLElement>(null)
@@ -57,7 +59,7 @@ const Header = () => {
       setSeriesList(reg.series)
       setDefaultSeriesId(reg.defaultSeries)
     })
-  }, [])
+  }, [dataVersion])
 
   const activeId = currentSeriesId || defaultSeriesId
   const activeSeries = seriesList.find((s) => s.id === activeId)

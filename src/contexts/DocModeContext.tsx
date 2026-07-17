@@ -32,6 +32,8 @@ interface DocModeState {
   /** "全量同步（清空+重下）" 进行中 */
   fullResetting: boolean
   syncResult: SyncResult | null
+  /** 每次 clear/sync/reset 完成后自增，驱动组件重新拉取数据 */
+  dataVersion: number
 }
 
 interface DocModeContextValue extends DocModeState {
@@ -46,6 +48,8 @@ interface DocModeContextValue extends DocModeState {
   /** 模式感知的文档加载: 本地=插件读, 网络=fetch */
   loadDoc: (path: string) => Promise<string>
   loadJson: (path: string) => Promise<any>
+  /** 每次 clear/sync/reset 完成后自增，驱动组件重新拉取数据 */
+  dataVersion: number
 }
 
 const DocModeContext = createContext<DocModeContextValue | null>(null)
@@ -76,6 +80,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
     clearing: false,
     fullResetting: false,
     syncResult: null,
+    dataVersion: 0,
   })
 
   // 初始化: 从 native prefs / localStorage 恢复
@@ -141,7 +146,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
       // Sync succeeded — clear the "data cleared" flag so asset fallback works again
       try { localStorage.removeItem('kbbook-data-cleared') } catch {}
       const status = await getSyncStatus()
-      setState((s) => ({ ...s, syncing: false, syncStatus: status, syncResult: result }))
+      setState((s) => ({ ...s, syncing: false, syncStatus: status, syncResult: result, dataVersion: s.dataVersion + 1 }))
       return result
     } catch (e) {
       setState((s) => ({ ...s, syncing: false, syncResult: null }))
@@ -165,7 +170,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
 
       // 4. Refresh sync status (will show empty)
       const status = await getSyncStatus()
-      setState((s) => ({ ...s, clearing: false, syncStatus: status, syncResult: null }))
+      setState((s) => ({ ...s, clearing: false, syncStatus: status, syncResult: null, dataVersion: s.dataVersion + 1 }))
     } catch (e) {
       setState((s) => ({ ...s, clearing: false }))
       throw e
@@ -190,7 +195,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
 
       // 5. Refresh sync status from native
       const status = await getSyncStatus()
-      setState((s) => ({ ...s, fullResetting: false, syncStatus: status, syncResult: result }))
+      setState((s) => ({ ...s, fullResetting: false, syncStatus: status, syncResult: result, dataVersion: s.dataVersion + 1 }))
       return result
     } catch (e) {
       setState((s) => ({ ...s, fullResetting: false, syncResult: null }))

@@ -22,6 +22,7 @@ import {
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable'
 import { loadSeriesRegistry } from '../utils/docs'
 import { useSeriesOrder } from '../utils/useSeriesOrder'
+import { useDocMode } from '../contexts/DocModeContext'
 import { siteConfig } from '../config/site'
 import type { Series } from '../types/series'
 import ViewListIcon from '@mui/icons-material/ViewList'
@@ -55,6 +56,7 @@ const loadLayoutMode = (): LayoutMode => {
 const HomePage = () => {
   const muiTheme = useTheme()
   const isDark = muiTheme.palette.mode === 'dark'
+  const { dataVersion } = useDocMode()
   const [seriesList, setSeriesList] = useState<Series[]>([])
   const [layout, setLayout] = useState<LayoutMode>(loadLayoutMode)
   const [editMode, setEditMode] = useState(false)
@@ -138,7 +140,7 @@ const HomePage = () => {
         setSeriesList(reg.series)
       })
       .catch(() => {})
-  }, [])
+  }, [dataVersion])
 
   return (
     <Box sx={{ minHeight: 'calc(100vh - var(--header-height))', pt: 'var(--header-height)' }}>

@@ -19,7 +19,7 @@ import {
   type SyncResult,
   type OssConfig,
 } from '../plugins/lz-portal-sync'
-import { configureDocLoader, clearDocsCache } from '../utils/docs'
+import { configureDocLoader, clearDocsCache, fetchWithTimeout, isHtmlFallback } from '../utils/docs'
 
 interface DocModeState {
   mode: 'local' | 'network'
@@ -130,12 +130,17 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
 
   const switchMode = useCallback(async (mode: 'local' | 'network') => {
     await setMode(mode)
-    setState((s) => ({ ...s, mode }))
+    // Clear JS caches to prevent stale data from previous mode
+    await clearAllJsCaches()
+    // Increment dataVersion so all components re-fetch data
+    setState((s) => ({ ...s, mode, dataVersion: s.dataVersion + 1 }))
   }, [])
 
   const updateNetworkUrl = useCallback(async (url: string) => {
     await setNetworkUrl(url)
-    setState((s) => ({ ...s, networkUrl: url }))
+    // Clear JS caches and force re-fetch from new URL
+    await clearAllJsCaches()
+    setState((s) => ({ ...s, networkUrl: url, dataVersion: s.dataVersion + 1 }))
   }, [])
 
   /** 增量同步 */
@@ -209,10 +214,14 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
       const result = await readLocalDoc(path)
       return result.content
     }
-    // Network mode
-    const resp = await fetch(`${state.networkUrl}/docs/${path}.md`)
-    if (!resp.ok) throw new Error(`Doc not found: ${path}`)
-    return resp.text()
+    // Network mode — use timeout + retry + SPA fallback detection
+    const resp = await fetchWithTimeout(`${state.networkUrl}/docs/${path}.md`)
+    if (!resp.ok) throw new Error(`Doc not found: ${path} (HTTP ${resp.status})`)
+    const text = await resp.text()
+    if (isHtmlFallback(resp, text)) {
+      throw new Error(`Doc not found (SPA fallback): ${path}`)
+    }
+    return text
   }, [state.mode, state.networkUrl])
 
   /** 模式感知的 JSON 加载 */
@@ -221,9 +230,13 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
       const result = await readLocalDoc(path.replace(/\.json$/, ''))
       return JSON.parse(result.content)
     }
-    const resp = await fetch(`${state.networkUrl}/docs/${path}.json`)
-    if (!resp.ok) throw new Error(`JSON not found: ${path}`)
-    return resp.json()
+    const resp = await fetchWithTimeout(`${state.networkUrl}/docs/${path}.json`)
+    if (!resp.ok) throw new Error(`JSON not found: ${path} (HTTP ${resp.status})`)
+    const text = await resp.text()
+    if (isHtmlFallback(resp, text)) {
+      throw new Error(`JSON not found (SPA fallback): ${path}`)
+    }
+    return JSON.parse(text)
   }, [state.mode, state.networkUrl])
 
   return (

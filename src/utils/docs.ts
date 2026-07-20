@@ -10,6 +10,50 @@
 import i18n from '../i18n'
 import { defaultLanguage, type LanguageCode } from '../i18n'
 
+// === Network fetch with timeout + retry ===
+
+const FETCH_TIMEOUT_MS = 10000
+const FETCH_MAX_RETRIES = 2
+const FETCH_RETRY_DELAYS = [500, 1500] // exponential backoff
+
+/**
+ * Fetch with AbortController timeout + retry on network errors.
+ * Does NOT retry on HTTP 4xx/5xx — only on network failures (fetch throws TypeError).
+ */
+export async function fetchWithTimeout(url: string, timeoutMs = FETCH_TIMEOUT_MS, retries = FETCH_MAX_RETRIES): Promise<Response> {
+  let lastError: Error | null = null
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const resp = await fetch(url, { signal: controller.signal })
+      clearTimeout(timer)
+      return resp
+    } catch (e: any) {
+      clearTimeout(timer)
+      lastError = e
+      if (e.name === 'AbortError') {
+        throw new Error(`请求超时 (${timeoutMs / 1000}s): ${url}`)
+      }
+      // Only retry on network errors (TypeError), not on HTTP errors
+      if (attempt < retries && e instanceof TypeError) {
+        await new Promise(r => setTimeout(r, FETCH_RETRY_DELAYS[attempt] ?? 1000))
+        continue
+      }
+      throw e
+    }
+  }
+  throw lastError ?? new Error(`请求失败: ${url}`)
+}
+
+/** Detect Vite dev server SPA fallback — HTML returned for missing files. */
+export function isHtmlFallback(response: Response, text: string): boolean {
+  const contentType = response.headers.get('content-type') || ''
+  return contentType.includes('text/html') ||
+    text.trimStart().startsWith('<!doctype') ||
+    text.trimStart().startsWith('<!DOCTYPE')
+}
+
 // === Doc loader configuration (set by DocModeContext) ===
 
 // Eagerly check data-cleared flag so fetch() fallback is blocked even before
@@ -29,14 +73,13 @@ let _readLocalDoc: ((path: string) => Promise<string>) | null = null
 export function configureDocLoader(opts: {
   baseUrl?: string
   readLocalDoc?: ((path: string) => Promise<string>) | null
+  /** Force-clear all caches regardless of whether baseUrl changed. */
+  forceClearCache?: boolean
 }) {
   const prevReadLocalDoc = _readLocalDoc
+  const baseUrlChanged = opts.baseUrl !== undefined && opts.baseUrl !== _docBaseUrl
   if (opts.baseUrl !== undefined && opts.baseUrl !== _docBaseUrl) {
     _docBaseUrl = opts.baseUrl
-    // Clear caches so next loadSeriesRegistry/loadDocsMeta re-fetches from new URL
-    seriesCache = null
-    versionsCache = null
-    clearDocsCache()
   }
   if (opts.readLocalDoc !== undefined) {
     _readLocalDoc = opts.readLocalDoc
@@ -49,6 +92,12 @@ export function configureDocLoader(opts: {
       versionsCache = null
       clearDocsCache()
     }
+  }
+  // Clear caches when baseUrl changed OR explicitly requested (mode switch, URL update)
+  if (baseUrlChanged || opts.forceClearCache) {
+    seriesCache = null
+    versionsCache = null
+    clearDocsCache()
   }
 }
 
@@ -150,11 +199,15 @@ export async function loadVersions(): Promise<VersionsConfig> {
       }
     }
 
-    const response = await fetch(`${_docBaseUrl}/docs/versions.json`)
+    const response = await fetchWithTimeout(`${_docBaseUrl}/docs/versions.json`)
     if (!response.ok) {
-      throw new Error('Failed to load versions.json')
+      throw new Error(`Failed to load versions.json (HTTP ${response.status})`)
     }
-    versionsCache = await response.json()
+    const text = await response.text()
+    if (isHtmlFallback(response, text)) {
+      throw new Error('Got SPA fallback for versions.json')
+    }
+    versionsCache = JSON.parse(text)
     return versionsCache!
   } catch (error) {
     console.error('Error loading versions:', error)
@@ -222,11 +275,15 @@ export async function loadDocsMeta(version: string, lang?: LanguageCode): Promis
       }
     }
 
-    const response = await fetch(`${_docBaseUrl}/docs/${language}/${version}/_meta.json`)
+    const response = await fetchWithTimeout(`${_docBaseUrl}/docs/${language}/${version}/_meta.json`)
     if (!response.ok) {
-      throw new Error(`Failed to load _meta.json for ${language}/${version}`)
+      throw new Error(`Failed to load _meta.json for ${language}/${version} (HTTP ${response.status})`)
     }
-    const meta: DocsMetaConfig = await response.json()
+    const text = await response.text()
+    if (isHtmlFallback(response, text)) {
+      throw new Error(`Got SPA fallback for _meta.json ${language}/${version}`)
+    }
+    const meta: DocsMetaConfig = JSON.parse(text)
     metaCache.set(cacheKey, meta)
     return meta
   } catch (error) {
@@ -275,16 +332,15 @@ export async function loadDocContent(version: string, slug: string, lang?: Langu
       }
     }
 
-    const response = await fetch(`${_docBaseUrl}/docs/${language}/${version}/${slug}.md`)
+    const response = await fetchWithTimeout(`${_docBaseUrl}/docs/${language}/${version}/${slug}.md`)
     if (!response.ok) {
-      throw new Error(`Failed to load ${slug}.md`)
+      throw new Error(`Failed to load ${slug}.md (HTTP ${response.status})`)
     }
     // Vite dev SPA fallback 会对缺失的 .md 返回 200 + text/html (index.html)
     // 检测 content-type 与正文起始,识别这种"假 200",当作 404 处理
-    const contentType = response.headers.get('content-type') || ''
     const content = await response.text()
     const looksLikeHtmlFallback =
-      contentType.includes('text/html') || content.trimStart().startsWith('<!doctype') || content.trimStart().startsWith('<!DOCTYPE')
+      isHtmlFallback(response, content)
     if (looksLikeHtmlFallback) {
       throw new Error(`Doc not found (got SPA fallback): ${slug}.md`)
     }
@@ -340,9 +396,13 @@ export async function loadSeriesRegistry(): Promise<SeriesRegistry> {
       }
     }
 
-    const response = await fetch(`${_docBaseUrl}/docs/series.json`)
-    if (!response.ok) throw new Error('Failed to load series.json')
-    const data = (await response.json()) as SeriesRegistry
+    const response = await fetchWithTimeout(`${_docBaseUrl}/docs/series.json`)
+    if (!response.ok) throw new Error(`Failed to load series.json (HTTP ${response.status})`)
+    const text = await response.text()
+    if (isHtmlFallback(response, text)) {
+      throw new Error('Got SPA fallback for series.json')
+    }
+    const data = JSON.parse(text) as SeriesRegistry
     seriesCache = data
     return data
   } catch (error) {

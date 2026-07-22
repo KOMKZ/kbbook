@@ -27,6 +27,7 @@ import { siteConfig } from '../config/site'
 import type { Series } from '../types/series'
 import ViewListIcon from '@mui/icons-material/ViewList'
 import ViewModuleIcon from '@mui/icons-material/ViewModule'
+import AppsIcon from '@mui/icons-material/Apps'
 import EditIcon from '@mui/icons-material/Edit'
 import CheckIcon from '@mui/icons-material/Check'
 import IconButton from '@mui/material/IconButton'
@@ -34,18 +35,19 @@ import Tooltip from '@mui/material/Tooltip'
 import QuoteBanner from '../components/home/QuoteBanner'
 import SeriesCard from '../components/home/SeriesCard'
 import SeriesListItem from '../components/home/SeriesListItem'
+import SeriesCompactCard from '../components/home/SeriesCompactCard'
 import PageToolbar from '../components/docs/PageToolbar'
 import { useReadingHistory } from '../hooks/useReadingHistory'
 
-type LayoutMode = 'list' | 'card'
+type LayoutMode = 'list' | 'card' | 'compact'
 const LAYOUT_KEY = 'lz-home-layout'
 
 const loadLayoutMode = (): LayoutMode => {
   try {
     const v = localStorage.getItem(LAYOUT_KEY)
-    if (v === 'card' || v === 'list') return v
+    if (v === 'card' || v === 'list' || v === 'compact') return v
   } catch {}
-  return 'list'
+  return 'compact'
 }
 
 /**
@@ -235,6 +237,11 @@ const HomePage = () => {
                   {editMode ? <CheckIcon fontSize="small" /> : <EditIcon fontSize="small" />}
                 </IconButton>
               </Tooltip>
+              <Tooltip title="超级紧凑">
+                <IconButton size="small" onClick={() => setLayoutPersist('compact')} color={layout === 'compact' ? 'primary' : 'default'}>
+                  <AppsIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
               <Tooltip title="紧凑列表">
                 <IconButton size="small" onClick={() => setLayoutPersist('list')} color={layout === 'list' ? 'primary' : 'default'}>
                   <ViewListIcon fontSize="small" />
@@ -255,7 +262,24 @@ const HomePage = () => {
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={orderedIds} strategy={rectSortingStrategy}>
-              {layout === 'card' ? (
+              {layout === 'compact' ? (
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gap: { xs: 0.75, sm: 1 },
+                    gridTemplateColumns: {
+                      xs: 'repeat(3, 1fr)',
+                      sm: 'repeat(4, 1fr)',
+                      md: 'repeat(6, 1fr)',
+                      lg: 'repeat(8, 1fr)',
+                    },
+                  }}
+                >
+                  {orderedSeries.map((s) => (
+                    <SeriesCompactCard key={s.id} series={s} consumeDragEnded={consumeDragEnded} editMode={editMode} />
+                  ))}
+                </Box>
+              ) : layout === 'card' ? (
                 <Box
                   sx={{
                     display: 'grid',

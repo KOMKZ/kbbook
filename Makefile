@@ -27,7 +27,8 @@ install:
 	pnpm install
 
 dev:
-	./node_modules/.bin/vite --host $(HOST) --port $(PORT) --strictPort
+	rm -rf node_modules/.vite
+	./node_modules/.bin/vite --host $(HOST) --port $(PORT) --strictPort --force
 
 # ---- Demo / Getting Started series ----
 

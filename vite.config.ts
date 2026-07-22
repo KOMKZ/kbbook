@@ -20,15 +20,13 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
-  // Exclude mermaid from Vite dependency pre-bundling to prevent
-  // 504 (Outdated Optimize Dep) errors caused by stale pre-bundle cache.
-  // Mermaid ships proper ESM (.mjs) and internally lazy-loads 29 diagram
-  // type modules via dynamic import(). When Vite pre-bundles these, the
-  // hashed chunk filenames can become stale after cache clears/package
-  // updates, causing mermaid render to fail. Serving mermaid as native
-  // ESM avoids the pre-bundle cache entirely.
+  // Ensure Vite pre-bundles mermaid eagerly. Mermaid lazy-loads 29 diagram
+  // type modules via internal dynamic import(). Combined with --force flag
+  // on dev server startup, this guarantees a fresh pre-bundle with all
+  // dynamic imports discovered, preventing 504 (Outdated Optimize Dep)
+  // errors from stale hashed chunks.
   optimizeDeps: {
-    exclude: ['mermaid'],
+    include: ['mermaid'],
   },
   server: {
     host: '0.0.0.0',

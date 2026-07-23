@@ -173,7 +173,12 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
       //    will see this and refuse to serve built-in assets, showing "no data".
       try { localStorage.setItem('kbbook-data-cleared', '1') } catch {}
 
-      // 4. Refresh sync status (will show empty)
+      // 4. Re-configure doc loader so _docBaseUrl is set to unreachable address.
+      //    The useEffect([mode, networkUrl]) doesn't fire because neither changed,
+      //    but _docBaseUrl must reflect the new data-cleared flag.
+      configureDocLoader({ baseUrl: 'http://127.0.0.1:1', forceClearCache: true })
+
+      // 5. Refresh sync status (will show empty)
       const status = await getSyncStatus()
       setState((s) => ({ ...s, clearing: false, syncStatus: status, syncResult: null, dataVersion: s.dataVersion + 1 }))
     } catch (e) {
@@ -195,8 +200,11 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
       // 3. Sync succeeded — clear the "data cleared" flag
       try { localStorage.removeItem('kbbook-data-cleared') } catch {}
 
-      // 4. Clear caches again after sync (new files are now on disk)
-      clearDocsCache()
+      // 4. Re-configure doc loader to reset _docBaseUrl from 'http://127.0.0.1:1'
+      //    back to '' (empty) so the fetch() fallback works correctly.  The
+      //    useEffect([mode, networkUrl]) does NOT fire because neither changed,
+      //    so _docBaseUrl would otherwise stay stale from a prior clearLocalData.
+      configureDocLoader({ baseUrl: '', forceClearCache: true })
 
       // 5. Refresh sync status from native
       const status = await getSyncStatus()

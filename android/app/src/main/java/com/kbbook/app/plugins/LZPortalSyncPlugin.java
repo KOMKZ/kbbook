@@ -951,18 +951,43 @@ public class LZPortalSyncPlugin extends Plugin {
             if ("/rpc/eval".equals(path)) {
                 if (code.isEmpty()) return "{\"error\":\"missing code\"}";
 
+                // Wrap user code to handle both sync and async (Promise) return values.
+                // evaluateJavascript resolves Promises in modern WebView but only when
+                // the entire expression is a Promise.  We wrap in Promise.resolve() so
+                // both sync values and async functions are handled uniformly.
+                String encoded;
+                try { encoded = java.net.URLEncoder.encode(code, "UTF-8"); }
+                catch (Exception ue) { encoded = code; }
+
+                String wrapped =
+                    "Promise.resolve(" +
+                    "  (function(){try{" +
+                    "    return eval(decodeURIComponent('" + encoded + "'));" +
+                    "  }catch(e){throw e&&e.message||String(e);}})()" +
+                    ").then(function(v){return JSON.stringify(v);})" +
+                    " .catch(function(e){return JSON.stringify({_rpc_error:e&&e.message||String(e)});})";
+
                 final CountDownLatch latch = new CountDownLatch(1);
                 final String[] result = {""};
                 getBridge().executeOnMainThread(() -> {
-                    getBridge().getWebView().evaluateJavascript(code, val -> {
+                    getBridge().getWebView().evaluateJavascript(wrapped, val -> {
                         result[0] = val != null ? val : "null";
                         latch.countDown();
                     });
                 });
                 if (latch.await(10, TimeUnit.SECONDS)) {
-                    return "{\"result\":" + result[0] + "}";
+                    // evaluateJavascript returns the value as a JSON-encoded string.
+                    // Since our wrapper already calls JSON.stringify, the callback
+                    // receives a double-encoded JSON string.  Unwrap one level.
+                    String raw = result[0];
+                    if (raw.startsWith("\"") && raw.endsWith("\"")) {
+                        raw = raw.substring(1, raw.length() - 1)
+                            .replace("\\\\", "\\")
+                            .replace("\\\"", "\"");
+                    }
+                    return "{\"result\":" + raw + "}";
                 }
-                return "{\"error\":\"timeout\"}";
+                return "{\"error\":\"timeout (10s)\"}";
             }
 
             return "{\"error\":\"unknown rpc: " + path + "\"}";

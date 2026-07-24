@@ -382,21 +382,37 @@ let seriesCache: SeriesRegistry | null = null
  * 加载系列注册表 /docs/series.json
  */
 export async function loadSeriesRegistry(): Promise<SeriesRegistry> {
-  if (seriesCache) return seriesCache
+  if (seriesCache) {
+    const cached = seriesCache
+    import('./debug').then(m => m.debugLog.info('series-loader', 'seriesRegistry cache HIT', { count: cached.series.length }))
+    return cached
+  }
+
+  const t0 = Date.now()
+  const log = (msg: string, d?: unknown) => { import('./debug').then(m => m.debugLog.info('series-loader', msg, d)).catch(()=>{}) }
+
+  log('seriesRegistry cache MISS — loading...')
   try {
     // 本地模式: 通过 Capacitor 插件读取
     if (_readLocalDoc) {
+      log('_readLocalDoc is SET, calling Capacitor plugin for series.json')
       try {
         const content = await _readLocalDoc('series.json')
         const data = JSON.parse(content) as SeriesRegistry
         seriesCache = data
+        log('Capacitor plugin SUCCESS', { elapsed: Date.now()-t0, count: data.series.length, hasHappy: data.series.some(s=>s.id==='happy') })
         return data
-      } catch {
+      } catch (e: any) {
+        log('Capacitor plugin FAILED, fallback to fetch', { error: e?.message || String(e) })
         // Fall through to fetch-based loading
       }
+    } else {
+      log('_readLocalDoc is NULL, skipping Capacitor plugin')
     }
 
-    const response = await fetchWithTimeout(`${_docBaseUrl}/docs/series.json`)
+    const fetchUrl = `${_docBaseUrl}/docs/series.json`
+    log('fetch series.json', { url: fetchUrl })
+    const response = await fetchWithTimeout(fetchUrl)
     if (!response.ok) throw new Error(`Failed to load series.json (HTTP ${response.status})`)
     const text = await response.text()
     if (isHtmlFallback(response, text)) {
@@ -404,8 +420,10 @@ export async function loadSeriesRegistry(): Promise<SeriesRegistry> {
     }
     const data = JSON.parse(text) as SeriesRegistry
     seriesCache = data
+    log('fetch SUCCESS', { elapsed: Date.now()-t0, count: data.series.length, hasHappy: data.series.some(s=>s.id==='happy') })
     return data
-  } catch (error) {
+  } catch (error: any) {
+    log('ALL paths FAILED, returning empty', { error: error?.message || String(error) })
     console.error('Error loading series registry:', error)
     return { defaultSeries: 'llm', series: [] }
   }

@@ -87,8 +87,36 @@ const isNative = (): boolean => {
 }
 
 export const readLocalDoc = async (path: string): Promise<ReadLocalDocResult> => {
-  if (isNative()) {
-    return LZPortalSync.readLocalDoc({ path })
+  const t0 = Date.now()
+  const native = isNative()
+  // Debug log: only for key files to avoid log spam
+  const isKey = path === 'series.json' || path === 'versions.json' || path.endsWith('/_meta.json')
+  if (isKey) {
+    try {
+      const m = await import('../../utils/debug.js')
+      m.debugLog.info('plugin', `readLocalDoc: ${path}`, { native, elapsed: Date.now()-t0 })
+    } catch {}
+  }
+
+  if (native) {
+    try {
+      const result = await LZPortalSync.readLocalDoc({ path })
+      if (isKey) {
+        try {
+          const m = await import('../../utils/debug.js')
+          m.debugLog.info('plugin', `readLocalDoc native OK: ${path}`, { source: result.source, len: result.content.length, elapsed: Date.now()-t0 })
+        } catch {}
+      }
+      return result
+    } catch (e: any) {
+      if (isKey) {
+        try {
+          const m = await import('../../utils/debug.js')
+          m.debugLog.error('plugin', `readLocalDoc native FAIL: ${path}`, { error: e?.message || String(e), elapsed: Date.now()-t0 })
+        } catch {}
+      }
+      throw e
+    }
   }
   // Web fallback: only append .md if the filename doesn't already have an extension
   // (mirrors the Java plugin's basename check — avoids double extension like series.json.md)
@@ -97,7 +125,14 @@ export const readLocalDoc = async (path: string): Promise<ReadLocalDocResult> =>
   const fetchPath = baseName.includes('.') ? path : path + '.md'
   const resp = await fetch(`/docs/${fetchPath}`)
   if (!resp.ok) throw new Error(`Doc not found: ${path}`)
-  return { content: await resp.text(), source: 'assets' }
+  const content = await resp.text()
+  if (isKey) {
+    try {
+      const m = await import('../../utils/debug.js')
+      m.debugLog.info('plugin', `readLocalDoc web fallback: ${path}`, { source: 'assets', len: content.length, elapsed: Date.now()-t0 })
+    } catch {}
+  }
+  return { content, source: 'assets' }
 }
 
 export interface OssConfig {

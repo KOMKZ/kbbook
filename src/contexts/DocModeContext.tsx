@@ -45,6 +45,8 @@ interface DocModeContextValue extends DocModeState {
   triggerClearLocal: () => Promise<void>
   /** 全量同步：清空本地所有数据 → 从 OSS 全量重新下载 */
   triggerFullReset: (ossCfg?: OssConfig) => Promise<SyncResult>
+  /** 仅清除 JS 内存缓存（series/versions/docs/meta/mermaid），触发数据重新拉取。不清除本地文件/同步状态。 */
+  clearCache: () => void
   /** 模式感知的文档加载: 本地=插件读, 网络=fetch */
   loadDoc: (path: string) => Promise<string>
   loadJson: (path: string) => Promise<any>
@@ -187,6 +189,12 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  /** 仅清除 JS 内存缓存（series/versions/docs/meta/mermaid），不清除本地文件 */
+  const clearCache = useCallback(() => {
+    clearAllJsCaches()
+    setState((s) => ({ ...s, dataVersion: s.dataVersion + 1 }))
+  }, [])
+
   /** 全量同步：清除+重新下载 */
   const triggerFullReset = useCallback(async (ossCfg?: OssConfig): Promise<SyncResult> => {
     setState((s) => ({ ...s, fullResetting: true }))
@@ -249,7 +257,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
 
   return (
     <DocModeContext.Provider
-      value={{ ...state, switchMode, updateNetworkUrl, triggerSync, triggerClearLocal, triggerFullReset, loadDoc, loadJson }}
+      value={{ ...state, switchMode, updateNetworkUrl, triggerSync, triggerClearLocal, triggerFullReset, clearCache, loadDoc, loadJson }}
     >
       {children}
     </DocModeContext.Provider>

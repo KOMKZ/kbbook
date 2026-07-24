@@ -28,6 +28,7 @@ import Paper from '@mui/material/Paper'
 import CircularProgress from '@mui/material/CircularProgress'
 import LinearProgress from '@mui/material/LinearProgress'
 import CloudSyncIcon from '@mui/icons-material/CloudSync'
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
 import BugReportIcon from '@mui/icons-material/BugReport'
 import SwitchRightIcon from '@mui/icons-material/SwitchRight'
 import VisibilityIcon from '@mui/icons-material/Visibility'
@@ -252,7 +253,7 @@ const SettingsPanel = () => {
   const [active, setActive] = useState<NavId>('general')
   const [sidebarOpen, setSidebarOpen] = useState(() => { try { return localStorage.getItem("kbbook-settings-sidebar") !== "0" } catch { return true } })
   const isNarrow = useMediaQuery('(max-width:600px)')
-  const { mode, networkUrl, syncStatus, syncing, clearing, fullResetting, switchMode, updateNetworkUrl, triggerSync, triggerClearLocal, triggerFullReset, syncResult } = useDocMode()
+  const { mode, networkUrl, syncStatus, syncing, clearing, fullResetting, switchMode, updateNetworkUrl, triggerSync, triggerClearLocal, triggerFullReset, clearCache, syncResult } = useDocMode()
   const [urlInput, setUrlInput] = useState(networkUrl)
   const [toast, setToast] = useState<{ message: string; severity: 'success' | 'error' } | null>(null)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
@@ -447,6 +448,24 @@ const SettingsPanel = () => {
                 />
                 <Typography variant="caption" color="text.secondary">秒</Typography>
               </Box>
+            </Section>
+            <Section
+              title="缓存"
+              subtitle="清除 series/versions/docs/meta/mermaid 等 JS 内存缓存，首页系列列表等数据将重新拉取"
+              icon={<DeleteSweepIcon color="action" />}
+            >
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<DeleteSweepIcon />}
+                onClick={() => {
+                  clearCache()
+                  setToast({ message: '内存缓存已清除，即将刷新页面...', severity: 'success' })
+                  setTimeout(() => window.location.reload(), 800)
+                }}
+              >
+                清除缓存
+              </Button>
             </Section>
           </>
         )

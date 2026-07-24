@@ -1,4 +1,4 @@
-package com.kbbook.app.plugins;
+package com.lzlab.portal.plugins;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -294,6 +294,7 @@ public class LZPortalSyncPlugin extends Plugin {
                 GetObjectRequest req = new GetObjectRequest(bucket, key);
                 GetObjectResult res = oss.getObject(req);
 
+                // Read stream to string
                 java.io.InputStream is = res.getObjectContent();
                 java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
                 byte[] buf = new byte[8192];
@@ -334,13 +335,13 @@ public class LZPortalSyncPlugin extends Plugin {
         getPrefs().edit().putString(KEY_MODE, call.getString("mode", DEFAULT_MODE)).apply(); call.resolve();
     }
     @PluginMethod public void getNetworkUrl(PluginCall call) {
-        JSObject r = new JSObject(); r.put("url", getPrefs().getString(KEY_NETWORK_URL, "http://localhost:3004")); call.resolve(r);
+        JSObject r = new JSObject(); r.put("url", getPrefs().getString(KEY_NETWORK_URL, "http://192.168.3.213:3004")); call.resolve(r);
     }
     @PluginMethod public void setNetworkUrl(PluginCall call) {
-        getPrefs().edit().putString(KEY_NETWORK_URL, call.getString("url", "http://localhost:3004")).apply(); call.resolve();
+        getPrefs().edit().putString(KEY_NETWORK_URL, call.getString("url", "http://192.168.3.213:3004")).apply(); call.resolve();
     }
 
-    // === Debug log file ===
+    // === Debug log file (adb: run-as com.lzlab.portal cat files/debug-log.json) ===
 
     @PluginMethod
     public void writeDebugLog(PluginCall call) {
@@ -557,6 +558,7 @@ public class LZPortalSyncPlugin extends Plugin {
             File syncedDir = new File(getContext().getFilesDir(), "synced-docs");
             for (String path : deleted) {
                 new File(syncedDir, path).delete();
+                // Clean up empty parent dirs
             }
         }
 
@@ -589,7 +591,7 @@ public class LZPortalSyncPlugin extends Plugin {
             }));
         }
 
-        // 收集本次"确实下载成功"的文件;失败的不计入,不会写进 manifest。
+        // 收集本次“确实下载成功”的文件;失败的不计入,不会写进 manifest。
         Map<String, String> okFiles = new HashMap<>(); // path -> remoteMD5
         long totalSize = 0;
         for (Future<String> f : futures) {
@@ -606,9 +608,9 @@ public class LZPortalSyncPlugin extends Plugin {
         }
         pool.shutdown();
 
-        // 8. Save manifest —— 只记录"确实落盘"的文件:未改动的旧文件 + 本次成功下载的文件。
+        // 8. Save manifest —— 只记录“确实落盘”的文件:未改动的旧文件 + 本次成功下载的文件。
         //    失败/被中断的文件不写入,下次同步会把它们当作缺失重新下载,
-        //    杜绝"残缺 manifest 谎报已最新、缺文件永远补不上"的复发坑。
+        //    杜绝“残缺 manifest 谎报已最新、缺文件永远补不上”的复发坑。
         emitProgress("save", 95, "Saving...");
         Manifest toSave = new Manifest();
         for (Map.Entry<String, String> le : localManifest.files.entrySet()) {
@@ -641,7 +643,7 @@ public class LZPortalSyncPlugin extends Plugin {
         return result;
     }
 
-    // === Full zip sync (fallback when manifest unavailable) ===
+    // === Full zip sync (first sync / large changes fallback) ===
 
     private SyncResult doFullZipSync() throws Exception {
         SyncResult result = new SyncResult();
@@ -769,6 +771,7 @@ public class LZPortalSyncPlugin extends Plugin {
 
     private void downloadWithProgress(String ossKey, File destFile) throws ClientException, ServiceException, IOException {
         OSS oss = newOSSClient();
+        // Get size
         long total = -1;
         try {
             total = oss.headObject(new com.alibaba.sdk.android.oss.model.HeadObjectRequest(getOssBucket(), ossKey))
@@ -859,9 +862,10 @@ public class LZPortalSyncPlugin extends Plugin {
                     try {
                         BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
                         String line = in.readLine();
-                        boolean isPostReq = false;
+                        boolean isPost = false;
                         String path = "/"; String postBody = "";
                         int contentLength = 0;
+                        boolean isPostReq = false;
                         if (line != null) {
                             String[] parts = line.split(" ");
                             if (parts.length >= 2) { path = parts[1]; isPostReq = "POST".equals(parts[0]); }
@@ -887,6 +891,7 @@ public class LZPortalSyncPlugin extends Plugin {
                         } else if (path.startsWith("/rpc/")) {
                             body = handleRpc(path, postBody);
                         } else {
+                            // /debug or any other path → serve debug log file
                             if (debugFile.exists()) {
                                 BufferedReader fr = new BufferedReader(new FileReader(debugFile));
                                 StringBuilder sb = new StringBuilder(); String l;
@@ -931,6 +936,7 @@ public class LZPortalSyncPlugin extends Plugin {
             int qi = path.indexOf('?');
             if (qi > 0) { query = path.substring(qi + 1); path = path.substring(0, qi); }
 
+            // Get code from query param or POST body
             final String code;
             if (query.startsWith("code=")) {
                 String raw = query.substring(5).replace("+", "%2B");
@@ -951,43 +957,79 @@ public class LZPortalSyncPlugin extends Plugin {
             if ("/rpc/eval".equals(path)) {
                 if (code.isEmpty()) return "{\"error\":\"missing code\"}";
 
-                // Wrap user code to handle both sync and async (Promise) return values.
-                // evaluateJavascript resolves Promises in modern WebView but only when
-                // the entire expression is a Promise.  We wrap in Promise.resolve() so
-                // both sync values and async functions are handled uniformly.
+                // Execute code and store result in window._kbbook_rpc.
+                // We use a global variable + polling because evaluateJavascript
+                // does NOT await Promises on this WebView (returns {} for them).
                 String encoded;
                 try { encoded = java.net.URLEncoder.encode(code, "UTF-8"); }
                 catch (Exception ue) { encoded = code; }
 
                 String wrapped =
-                    "Promise.resolve(" +
-                    "  (function(){try{" +
-                    "    return eval(decodeURIComponent('" + encoded + "'));" +
-                    "  }catch(e){throw e&&e.message||String(e);}})()" +
-                    ").then(function(v){return JSON.stringify(v);})" +
-                    " .catch(function(e){return JSON.stringify({_rpc_error:e&&e.message||String(e)});})";
+                    "try{" +
+                    "  var __r=eval(decodeURIComponent('" + encoded + "'));" +
+                    "  if(__r&&typeof __r.then==='function'){" +
+                    "    __r.then(function(v){window._kbbook_rpc=JSON.stringify(v);})" +
+                    "       .catch(function(e){window._kbbook_rpc=JSON.stringify({_rpc_error:e&&e.message||String(e)});});" +
+                    "  }else{" +
+                    "    window._kbbook_rpc=JSON.stringify(__r);" +
+                    "  }" +
+                    "}catch(e){" +
+                    "  window._kbbook_rpc=JSON.stringify({_rpc_error:e&&e.message||String(e)});" +
+                    "}";
 
-                final CountDownLatch latch = new CountDownLatch(1);
-                final String[] result = {""};
+                // Execute the wrapped code (fire and forget)
                 getBridge().executeOnMainThread(() -> {
-                    getBridge().getWebView().evaluateJavascript(wrapped, val -> {
-                        result[0] = val != null ? val : "null";
-                        latch.countDown();
-                    });
+                    getBridge().getWebView().evaluateJavascript(wrapped, null);
                 });
-                if (latch.await(10, TimeUnit.SECONDS)) {
-                    // evaluateJavascript returns the value as a JSON-encoded string.
-                    // Since our wrapper already calls JSON.stringify, the callback
-                    // receives a double-encoded JSON string.  Unwrap one level.
-                    String raw = result[0];
-                    if (raw.startsWith("\"") && raw.endsWith("\"")) {
-                        raw = raw.substring(1, raw.length() - 1)
-                            .replace("\\\\", "\\")
-                            .replace("\\\"", "\"");
+
+                // Poll window._kbbook_rpc for up to 10 seconds
+                long start = System.currentTimeMillis();
+                String rpcValue = "";
+                while (System.currentTimeMillis() - start < 10000) {
+                    final CountDownLatch pollLatch = new CountDownLatch(1);
+                    final String[] pollResult = {""};
+                    getBridge().executeOnMainThread(() -> {
+                        getBridge().getWebView().evaluateJavascript(
+                            "(typeof window._kbbook_rpc!=='undefined')?window._kbbook_rpc:null",
+                            val -> { pollResult[0] = val != null ? val : "null"; pollLatch.countDown(); });
+                    });
+                    try { pollLatch.await(200, java.util.concurrent.TimeUnit.MILLISECONDS); }
+                    catch (InterruptedException ie) { break; }
+                    if (!pollResult[0].isEmpty() && !"null".equals(pollResult[0])) {
+                        rpcValue = pollResult[0];
+                        // Clean up
+                        getBridge().executeOnMainThread(() -> {
+                            getBridge().getWebView().evaluateJavascript("delete window._kbbook_rpc", null);
+                        });
+                        break;
                     }
-                    return "{\"result\":" + raw + "}";
                 }
-                return "{\"error\":\"timeout (10s)\"}";
+
+                if (rpcValue.isEmpty()) {
+                    return "{\"error\":\"timeout (10s) — result is null or async code did not resolve\"}";
+                }
+
+                // rpcValue is the JSON from evaluateJavascript.
+                // Our stored value in window._kbbook_rpc is a JSON string.
+                // evaluateJavascript returns it as a JSON-encoded string (double-encoded).
+                // Strip the outer JSON quotes to get our inner JSON.
+                String inner = rpcValue;
+                if (inner.startsWith("\"") && inner.endsWith("\"")) {
+                    inner = inner.substring(1, inner.length() - 1)
+                        .replace("\\\\", "\\")
+                        .replace("\\\"", "\"");
+                }
+                try {
+                    org.json.JSONObject obj = new org.json.JSONObject(inner);
+                    if (obj.has("_rpc_error")) {
+                        return "{\"error\":\"eval: " + obj.getString("_rpc_error") + "\"}";
+                    }
+                    // Return the inner value as the result
+                    return "{\"result\":" + inner + "}";
+                } catch (Exception ex) {
+                    // Not JSON — return as-is
+                    return "{\"result\":" + inner + "}";
+                }
             }
 
             return "{\"error\":\"unknown rpc: " + path + "\"}";

@@ -14,7 +14,7 @@ import {
   syncFromOSS,
   resetAndSync,
   clearLocalData,
-  readLocalDoc,
+  readLocalDoc as pluginReadLocalDoc,
   type SyncStatus,
   type SyncResult,
   type OssConfig,
@@ -73,7 +73,39 @@ async function clearAllJsCaches() {
   try { localStorage.removeItem('kbbook-sync-in-progress') } catch {}
 }
 
+/**
+ * Eagerly configure the doc loader for local mode so that _readLocalDoc
+ * is available BEFORE any child component mounts.  This fixes the cold-start
+ * race where loadSeriesRegistry runs before configureDocLoader's useEffect fires,
+ * causing _readLocalDoc to be null and falling back to fetch (APK assets).
+ *
+ * Called synchronously during DocModeProvider's first render (before children),
+ * then kept up-to-date by the useEffect when mode/networkUrl actually change.
+ */
+let _eagerDocLoaderDone = false
+function ensureDocLoaderReady() {
+  if (_eagerDocLoaderDone) return
+  _eagerDocLoaderDone = true
+  const dataCleared = (() => { try { return localStorage.getItem('kbbook-data-cleared') === '1' } catch { return false } })()
+  configureDocLoader({
+    baseUrl: dataCleared ? 'http://127.0.0.1:1' : '',
+    readLocalDoc: async (path: string) => {
+      const result = await pluginReadLocalDoc(path)
+      const cleared = localStorage.getItem('kbbook-data-cleared') === '1'
+      if (result.source === 'assets' && cleared) {
+        throw new Error('DATA_CLEARED')
+      }
+      return result.content
+    },
+  })
+}
+
 export function DocModeProvider({ children }: { children: ReactNode }) {
+  // EAGER: set _readLocalDoc before children mount.
+  // Must run synchronously during render (not in useEffect) so that
+  // loadSeriesRegistry() called from child useEffect sees it immediately.
+  ensureDocLoaderReady()
+
   const [state, setState] = useState<DocModeState>({
     mode: 'local',
     networkUrl: DEFAULT_NETWORK_URL,
@@ -115,7 +147,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
         readLocalDoc: async (path: string) => {
           const t0 = Date.now()
           try {
-            const result = await readLocalDoc(path)
+            const result = await pluginReadLocalDoc(path)
             const cleared = localStorage.getItem('kbbook-data-cleared') === '1'
             import('@/utils/debug.js').then(m => m.debugLog.info('doc-mode', `readLocalDoc OK: ${path}`, { source: result.source, len: result.content.length, cleared, elapsed: Date.now()-t0 })).catch(()=>{})
             // Block APK asset fallback: readDocFromStorage (synced-docs) is empty
@@ -237,7 +269,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
   /** 模式感知的 .md 文档加载 */
   const loadDoc = useCallback(async (path: string): Promise<string> => {
     if (state.mode === 'local') {
-      const result = await readLocalDoc(path)
+      const result = await pluginReadLocalDoc(path)
       return result.content
     }
     // Network mode — use timeout + retry + SPA fallback detection
@@ -253,7 +285,7 @@ export function DocModeProvider({ children }: { children: ReactNode }) {
   /** 模式感知的 JSON 加载 */
   const loadJson = useCallback(async (path: string): Promise<any> => {
     if (state.mode === 'local') {
-      const result = await readLocalDoc(path.replace(/\.json$/, ''))
+      const result = await pluginReadLocalDoc(path.replace(/\.json$/, ''))
       return JSON.parse(result.content)
     }
     const resp = await fetchWithTimeout(`${state.networkUrl}/docs/${path}.json`)
